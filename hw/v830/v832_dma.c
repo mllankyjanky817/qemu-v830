@@ -168,7 +168,7 @@ static bool v832_dma_channel_requested(const V832DMAState *s,
 
     switch (transfer_type) {
     case V832_DMA_REQUEST_EXTERNAL:
-        return channel->request;
+        return channel->external_request;
     case V832_DMA_REQUEST_SOFTWARE:
         return channel->software_request;
     default:
@@ -212,8 +212,8 @@ static bool v832_dma_arbitrate(V832DMAState *s)
 
         if (transfer_type == V832_DMA_REQUEST_EXTERNAL) {
             if (!FIELD_EX16(channel->dchc, DCHC, TM) ||
-                !channel->request) {
-                channel->request = false;
+                !channel->external_request) {
+                channel->external_request = false;
             }
         } else if (transfer_type == V832_DMA_REQUEST_SOFTWARE) {
             channel->software_request = false;
@@ -243,7 +243,7 @@ static void v832_dma_request(void *opaque, int n, int level)
 
     V832DMAChannel *channel = &s->channel[n];
     bool active = FIELD_EX16(channel->dchc, DCHC, DRL) ? !level : level;
-    channel->request = active;
+    channel->external_request = active;
 
     if (active) {
         v832_dma_arbitrate(s);

@@ -25,7 +25,7 @@ typedef struct V832DMAChannel {
     uint32_t dda;
     uint32_t dbc;
     uint16_t dchc;
-    bool request;
+    bool external_request;
     bool software_request;
 } V832DMAChannel;
 
@@ -39,6 +39,7 @@ struct V832DMAState {
     qemu_irq dmaak[V832_DMA_CHANNELS];
     qemu_irq tc_stopak;
 
+    /* Pending UART/CSI/timer request, indexed by TTYP. */
     bool pending_internal[8];
     uint16_t dc;
 };

@@ -104,10 +104,8 @@ static void v832_dma_raise_tc(V832DMAState *s)
 
 static void v832_dma_raise_irq(V832DMAState *s)
 {
-    if (s->cpu) {
-        v830_cpu_set_interrupt_source(s->cpu, V832_DMA_INT_SOURCE);
-        cpu_interrupt(CPU(s->cpu), CPU_INTERRUPT_HARD);
-    }
+    qemu_set_irq(s->irq, 1);
+    qemu_set_irq(s->irq, 0);
 }
 
 static bool v832_dma_transfer(V832DMAState *s, V832DMAChannel *channel)
@@ -346,6 +344,7 @@ static void v832_dma_realize(DeviceState *dev, Error **errp)
     memory_region_init_io(&s->iomem, OBJECT(dev), &v832_dma_ops, s,
                           "v832-dma", V832_DMA_MMIO_SIZE);
     sysbus_init_mmio(SYS_BUS_DEVICE(dev), &s->iomem);
+    sysbus_init_irq(SYS_BUS_DEVICE(dev), &s->irq);
 
     qdev_init_gpio_in(dev, v832_dma_request, V832_DMA_CHANNELS);
     qdev_init_gpio_out_named(dev, s->dmaak, "dmaak", V832_DMA_CHANNELS);

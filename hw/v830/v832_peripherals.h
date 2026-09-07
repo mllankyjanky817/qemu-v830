@@ -15,6 +15,7 @@ typedef struct V832PeripheralsState {
 	MemoryRegion iomem;
 	CharFrontend chr;
 	qemu_irq irq;
+	qemu_irq dma_irq;
 	qemu_irq csi_sclk_out;
 	qemu_irq csi_so_out;
 	qemu_irq port_out[5];

@@ -102,6 +102,9 @@ static void v832_soc_realize(DeviceState *dev, Error **errp)
                                         DEVICE(&s->peripherals), "dmaak-in",
                                         channel));
     }
+    sysbus_connect_irq(SYS_BUS_DEVICE(&s->dma), 0,
+                       qdev_get_gpio_in_named(DEVICE(&s->peripherals),
+                                              "dma-irq", 0));
     sysbus_mmio_map_overlap(SYS_BUS_DEVICE(&s->dma), 0,
                             V832_SOC_IO_BASE + 0x30, 10);
 }

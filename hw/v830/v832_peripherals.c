@@ -74,6 +74,7 @@
 #define V832_IRQ_UART_TX  10
 #define V832_IRQ_UART_ERR 13
 #define V832_IRQ_TIMER1   14
+#define V832_IRQ_DMA      7
 #define INTCM4_SOURCE     3
 #define INTCSI_SOURCE     9
 
@@ -183,6 +184,15 @@ static void v832_peripherals_intp(void *opaque, int n, int level)
         }
     } else if (active && (mode == 2 || mode == 3)) {
         v832_raise_irq(s, source);
+    }
+}
+
+static void v832_peripherals_dma_irq(void *opaque, int n, int level)
+{
+    V832PeripheralsState *s = opaque;
+
+    if (n == 0 && level) {
+        v832_raise_irq(s, V832_IRQ_DMA);
     }
 }
 
@@ -1004,6 +1014,7 @@ static void v832_peripherals_realize(DeviceState *dev, Error **errp)
                           "v832-internal-io", V832_IO_SIZE);
     sysbus_init_mmio(SYS_BUS_DEVICE(dev), &s->iomem);
     sysbus_init_irq(SYS_BUS_DEVICE(dev), &s->irq);
+    qdev_init_gpio_in_named(dev, v832_peripherals_dma_irq, "dma-irq", 1);
     qdev_init_gpio_in_named(dev, v832_peripherals_intp, "intp", 8);
     qdev_init_gpio_in_named(dev, v832_port_in, "port-in", 5);
     qdev_init_gpio_in_named(dev, v832_porta_in, "porta-in", 8);

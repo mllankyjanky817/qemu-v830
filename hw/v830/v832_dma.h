@@ -34,6 +34,7 @@ struct V832DMAState {
 
     MemoryRegion iomem;
     V830CPU *cpu;
+    qemu_irq irq;
 
     V832DMAChannel channel[V832_DMA_CHANNELS];
     qemu_irq dmaak[V832_DMA_CHANNELS];

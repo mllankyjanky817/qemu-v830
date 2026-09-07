@@ -1,5 +1,6 @@
 #include "qemu/osdep.h"
 #include "qapi/error.h"
+#include "hw/core/irq.h"
 #include "chardev/char.h"
 #include "hw/core/qdev-clock.h"
 #include "hw/core/qdev-properties-system.h"
@@ -7,6 +8,17 @@
 #include "system/memory.h"
 #include "system/system.h"
 #include "hw/v830/v832_soc.h"
+
+static void v832_soc_nmi(void *opaque, int n, int level)
+{
+    V832SoCState *s = opaque;
+
+    if (n != 0) {
+        return;
+    }
+    qemu_set_irq(qdev_get_gpio_in_named(DEVICE(&s->cpu), "nmi", 0), level);
+    qemu_set_irq(qdev_get_gpio_in_named(DEVICE(&s->dma), "nmi", 0), level);
+}
 
 static void v832_soc_init(Object *obj)
 {
@@ -17,6 +29,7 @@ static void v832_soc_init(Object *obj)
     object_initialize_child(obj, "peripherals", &s->peripherals,
                             TYPE_V832_PERIPHERALS);
     object_initialize_child(obj, "dma", &s->dma, TYPE_V832_DMA);
+    qdev_init_gpio_in_named(DEVICE(obj), v832_soc_nmi, "nmi", 1);
 
     s->osc_clk = qdev_init_clock_in(DEVICE(obj), "osc", NULL, NULL, 0);
     s->cpu_clk = clock_new(obj, "cpuclk");

@@ -96,8 +96,9 @@ static void v832_dma_set_ack(V832DMAState *s, unsigned index, bool active)
     qemu_set_irq(s->dmaak[index], active ? (dal ? 1 : 0) : (dal ? 0 : 1));
 }
 
-static void v832_dma_raise_tc(V832DMAState *s)
+static void v832_dma_raise_tc_stopak(V832DMAState *s)
 {
+    /* The external pin is multiplexed: DC.TCSA selects TC or STOPAK. */
     qemu_set_irq(s->tc_stopak, 1);
     qemu_set_irq(s->tc_stopak, 0);
 }
@@ -147,7 +148,7 @@ static bool v832_dma_transfer(V832DMAState *s, V832DMAChannel *channel)
         s->dc |= BIT(R_DC_TC_SHIFT + index);
 
         v832_dma_set_ack(s, index, false);
-        v832_dma_raise_tc(s);
+        v832_dma_raise_tc_stopak(s);
         v832_dma_raise_irq(s);
     }
     return true;
@@ -229,6 +230,28 @@ void v832_dma_set_internal_request(V832DMAState *s, enum V832DMARequest request)
     }
     s->pending_internal[request] = true;
     v832_dma_arbitrate(s);
+}
+
+void v832_dma_nmi(V832DMAState *s)
+{
+    if (!FIELD_EX16(s->dc, DC, MEN)) {
+        return;
+    }
+
+    s->dc = FIELD_DP16(s->dc, DC, MEN, 0);
+    for (unsigned index = 0; index < V832_DMA_CHANNELS; index++) {
+        v832_dma_set_ack(s, index, false);
+    }
+}
+
+static void v832_dma_nmi_input(void *opaque, int n, int level)
+{
+    V832DMAState *s = opaque;
+
+    if (n == 0 && s->nmi_level && !level) {
+        v832_dma_nmi(s);
+    }
+    s->nmi_level = level;
 }
 
 static void v832_dma_request(void *opaque, int n, int level)
@@ -330,6 +353,7 @@ static void v832_dma_reset_hold(Object *obj, ResetType type)
     memset(s->channel, 0, sizeof(s->channel));
     memset(s->pending_internal, 0, sizeof(s->pending_internal));
     s->dc = 0;
+    s->nmi_level = false;
 
     for (unsigned i = 0; i < V832_DMA_CHANNELS; i++) {
         qemu_set_irq(s->dmaak[i], 1);
@@ -347,6 +371,7 @@ static void v832_dma_realize(DeviceState *dev, Error **errp)
     sysbus_init_irq(SYS_BUS_DEVICE(dev), &s->irq);
 
     qdev_init_gpio_in(dev, v832_dma_request, V832_DMA_CHANNELS);
+    qdev_init_gpio_in_named(dev, v832_dma_nmi_input, "nmi", 1);
     qdev_init_gpio_out_named(dev, s->dmaak, "dmaak", V832_DMA_CHANNELS);
     qdev_init_gpio_out_named(dev, &s->tc_stopak, "tc_stopak", 1);
 }

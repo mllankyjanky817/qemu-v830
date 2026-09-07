@@ -42,9 +42,11 @@ struct V832DMAState {
 
     /* Pending UART/CSI/timer request, indexed by TTYP. */
     bool pending_internal[8];
+    bool nmi_level;
     uint16_t dc;
 };
 
 void v832_dma_set_internal_request(V832DMAState *s, enum V832DMARequest request);
+void v832_dma_nmi(V832DMAState *s);
 
 #endif

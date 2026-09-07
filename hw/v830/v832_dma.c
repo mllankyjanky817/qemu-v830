@@ -70,6 +70,23 @@ static unsigned v832_dma_width(const V832DMAChannel *channel)
     }
 }
 
+static void v832_dma_advance(uint32_t *address, unsigned direction,
+                             unsigned width)
+{
+    switch (direction) {
+    case 0:
+        *address += width;
+        break;
+    case 1:
+        *address -= width;
+        break;
+    case 2:
+        break;
+    default:
+        g_assert_not_reached();
+    }
+}
+
 static void v832_dma_set_ack(V832DMAState *s, unsigned index, bool active)
 {
     V832DMAChannel *channel = &s->channel[index];
@@ -97,8 +114,10 @@ static bool v832_dma_transfer(V832DMAState *s, V832DMAChannel *channel)
 {
     uint8_t data[4];
     unsigned width = v832_dma_width(channel);
+    bool first_transfer = channel->dbc == 0;
 
     if (!width || !v832_dma_valid_control(channel->dchc) ||
+        (!first_transfer && channel->dbc < width) ||
         v832_dma_internal_address(channel->dsa) ||
         v832_dma_internal_address(channel->dda)) {
         qemu_log_mask(LOG_GUEST_ERROR, "V832 DMA: invalid transfer configuration\n");
@@ -115,17 +134,15 @@ static bool v832_dma_transfer(V832DMAState *s, V832DMAChannel *channel)
         return false;
     }
 
-    switch (FIELD_EX16(channel->dchc, DCHC, SAD)) {
-    case 0: channel->dsa += width; break;
-    case 1: channel->dsa -= width; break;
+    v832_dma_advance(&channel->dsa,
+                     FIELD_EX16(channel->dchc, DCHC, SAD), width);
+    v832_dma_advance(&channel->dda,
+                     FIELD_EX16(channel->dchc, DCHC, DAD), width);
+    if (!first_transfer) {
+        channel->dbc -= width;
     }
 
-    switch (FIELD_EX16(channel->dchc, DCHC, DAD)) {
-    case 0: channel->dda += width; break;
-    case 1: channel->dda -= width; break;
-    }
-
-    if (channel->dbc < width) {
+    if (first_transfer || channel->dbc == 0) {
         unsigned index = channel - s->channel;
 
         channel->dchc = FIELD_DP16(channel->dchc, DCHC, EN, 0);
@@ -134,72 +151,77 @@ static bool v832_dma_transfer(V832DMAState *s, V832DMAChannel *channel)
         v832_dma_set_ack(s, index, false);
         v832_dma_raise_tc(s);
         v832_dma_raise_irq(s);
-    } else {
-        channel->dbc -= width;
     }
     return true;
 }
 
-static void v832_dma_run(V832DMAState *s, unsigned index)
+static bool v832_dma_channel_requested(const V832DMAState *s,
+                                       unsigned index)
 {
-    V832DMAChannel *channel = &s->channel[index];
-
-    if (!FIELD_EX16(s->dc, DC, MEN) || !FIELD_EX16(channel->dchc, DCHC, EN)) {
-        return;
-    }
-
-    if (!v832_dma_valid_control(channel->dchc)) {
-        channel->dchc = FIELD_DP16(channel->dchc, DCHC, EN, 0);
-        return;
-    }
-
+    const V832DMAChannel *channel = &s->channel[index];
     unsigned transfer_type = FIELD_EX16(channel->dchc, DCHC, TTYP);
-    if (transfer_type != V832_DMA_REQUEST_EXTERNAL &&
-        transfer_type != V832_DMA_REQUEST_SOFTWARE) {
-        return;
-    }
-
-    v832_dma_set_ack(s, index, true);
-    do {
-        if (!v832_dma_transfer(s, channel)) {
-            channel->dchc = FIELD_DP16(channel->dchc, DCHC, EN, 0);
-            break;
-        }
-    } while (FIELD_EX16(channel->dchc, DCHC, EN) &&
-             FIELD_EX16(channel->dchc, DCHC, TM) && channel->request);
 
     if (!FIELD_EX16(channel->dchc, DCHC, EN) ||
-        !FIELD_EX16(channel->dchc, DCHC, TM) || !channel->request) {
-        v832_dma_set_ack(s, index, false);
+        !v832_dma_valid_control(channel->dchc)) {
+        return false;
+    }
+
+    switch (transfer_type) {
+    case V832_DMA_REQUEST_EXTERNAL:
+        return channel->request;
+    case V832_DMA_REQUEST_SOFTWARE:
+        return channel->software_request;
+    default:
+        return transfer_type < ARRAY_SIZE(s->pending_internal) &&
+               s->pending_internal[transfer_type];
     }
 }
 
-static void v832_dma_service_internal(V832DMAState *s, unsigned request)
+static bool v832_dma_arbitrate(V832DMAState *s)
 {
-    if (!FIELD_EX16(s->dc, DC, MEN) || !s->pending_internal[request]) {
-        return;
+    bool transferred = false;
+
+    if (!FIELD_EX16(s->dc, DC, MEN)) {
+        return false;
     }
 
-    for (unsigned index = 0; index < V832_DMA_CHANNELS; index++) {
-        V832DMAChannel *channel = &s->channel[index];
+    for (;;) {
+        unsigned index;
+        V832DMAChannel *channel;
+        unsigned transfer_type;
 
-        if (!FIELD_EX16(channel->dchc, DCHC, EN) ||
-            !v832_dma_valid_control(channel->dchc)) {
-            continue;
+        for (index = 0; index < V832_DMA_CHANNELS; index++) {
+            if (v832_dma_channel_requested(s, index)) {
+                break;
+            }
+        }
+        if (index == V832_DMA_CHANNELS) {
+            break;
         }
 
-        if (FIELD_EX16(channel->dchc, DCHC, TTYP) != request) {
-            continue;
-        }
-
+        channel = &s->channel[index];
+        transfer_type = FIELD_EX16(channel->dchc, DCHC, TTYP);
         v832_dma_set_ack(s, index, true);
+
         if (!v832_dma_transfer(s, channel)) {
             channel->dchc = FIELD_DP16(channel->dchc, DCHC, EN, 0);
-            v832_dma_set_ack(s, index, false);
+        } else {
+            transferred = true;
         }
-        s->pending_internal[request] = false;
-        return;
+        v832_dma_set_ack(s, index, false);
+
+        if (transfer_type == V832_DMA_REQUEST_EXTERNAL) {
+            if (!FIELD_EX16(channel->dchc, DCHC, TM) ||
+                !channel->request) {
+                channel->request = false;
+            }
+        } else if (transfer_type == V832_DMA_REQUEST_SOFTWARE) {
+            channel->software_request = false;
+        } else if (transfer_type < ARRAY_SIZE(s->pending_internal)) {
+            s->pending_internal[transfer_type] = false;
+        }
     }
+    return transferred;
 }
 
 void v832_dma_set_internal_request(V832DMAState *s, enum V832DMARequest request)
@@ -208,7 +230,7 @@ void v832_dma_set_internal_request(V832DMAState *s, enum V832DMARequest request)
         return;
     }
     s->pending_internal[request] = true;
-    v832_dma_service_internal(s, request);
+    v832_dma_arbitrate(s);
 }
 
 static void v832_dma_request(void *opaque, int n, int level)
@@ -224,12 +246,7 @@ static void v832_dma_request(void *opaque, int n, int level)
     channel->request = active;
 
     if (active) {
-        for (unsigned i = 0; i < V832_DMA_CHANNELS; i++) {
-            if (s->channel[i].request && FIELD_EX16(s->channel[i].dchc, DCHC, EN)) {
-                v832_dma_run(s, i);
-                break;
-            }
-        }
+        v832_dma_arbitrate(s);
     }
 }
 
@@ -274,12 +291,7 @@ static void v832_dma_write(void *opaque, hwaddr offset, uint64_t value, unsigned
 
     if (offset == REG_DC) {
         s->dc = (s->dc & R_DC_TC_MASK) | (value & (R_DC_TCSA_MASK | R_DC_MEN_MASK));
-        for (unsigned i = 0; i < V832_DMA_CHANNELS; i++) {
-            v832_dma_run(s, i);
-        }
-        for (unsigned req = V832_DMA_REQUEST_UART_TX; req <= V832_DMA_REQUEST_TIMER4; req++) {
-            v832_dma_service_internal(s, req);
-        }
+        v832_dma_arbitrate(s);
         return;
     }
 
@@ -297,10 +309,10 @@ static void v832_dma_write(void *opaque, hwaddr offset, uint64_t value, unsigned
     case REG_DBCL: channel->dbc = (channel->dbc & 0xffff0000) | (value & 0xffff); break;
     case REG_DCHC:
         channel->dchc = value;
-        v832_dma_run(s, index);
-        for (unsigned req = V832_DMA_REQUEST_UART_TX; req <= V832_DMA_REQUEST_TIMER4; req++) {
-            v832_dma_service_internal(s, req);
-        }
+        channel->software_request =
+            FIELD_EX16(channel->dchc, DCHC, TTYP) ==
+            V832_DMA_REQUEST_SOFTWARE;
+        v832_dma_arbitrate(s);
         break;
     }
 }

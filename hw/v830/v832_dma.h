@@ -26,6 +26,7 @@ typedef struct V832DMAChannel {
     uint32_t dbc;
     uint16_t dchc;
     bool request;
+    bool software_request;
 } V832DMAChannel;
 
 struct V832DMAState {

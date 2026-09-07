@@ -8,6 +8,10 @@
 .git-submodule-status
 .clang-format
 .gdb_history
+/V830_test/
+/v83*/
+/mips-stopwatch/
+/NEC_V830_DOCS/
 cscope.*
 tags
 TAGS

@@ -1,0 +1,50 @@
+# NEC V830 instruction decode tree part for single-word instructions.
+# The V830 instruction stream is little-endian 16-bit words.
+
+&rr src dst
+&ri dst imm
+&branch cond disp advanced
+&long src dst
+&jump disp
+
+# Register/register instructions.
+MOV     000000 dst:5 src:5                 &rr
+ADD     000001 dst:5 src:5                 &rr
+SUB     000010 dst:5 src:5                 &rr
+CMP     000011 dst:5 src:5                 &rr
+SHL     000100 dst:5 src:5                 &rr
+SHR     000101 dst:5 src:5                 &rr
+JMP     000110 dst:5 src:5                 &rr
+SAR     000111 dst:5 src:5                 &rr
+MUL     001000 dst:5 src:5                 &rr
+DIV     001001 dst:5 src:5                 &rr
+MULU    001010 dst:5 src:5                 &rr
+DIVU    001011 dst:5 src:5                 &rr
+OR      001100 dst:5 src:5                 &rr
+AND     001101 dst:5 src:5                 &rr
+XOR     001110 dst:5 src:5                 &rr
+NOT     001111 dst:5 src:5                 &rr
+
+# Five-bit immediate instructions.
+MOVI    010000 dst:5 imm:s5                &ri
+ADDI5   010001 dst:5 imm:s5                &ri
+SETF    010010 dst:5 imm:5                &ri
+CMPI5   010011 dst:5 imm:s5                &ri
+SHLI5   010100 dst:5 imm:5                 &ri
+SHRI5   010101 dst:5 imm:5                 &ri
+EI      010110----------                    &ri dst=0 imm=0
+SARI5   010111 dst:5 imm:5                 &ri
+
+# Conditional branches and the two-word relative jumps.
+BCOND   100 cond:4 disp:s8 0               &branch advanced=0
+ABCOND  100 cond:4 disp:s8 1               &branch advanced=1
+
+# System and control instructions. These patterns precede the generic leaves.
+RETI    0110010000000000
+BRKRET  0110010000000001
+HALT    0110100000000000
+STBY    0110100000000001
+LDSR    011100 src:5 dst:5                 &rr
+STSR    011101 src:5 dst:5                 &rr
+DI      0111100000000000
+TRAP    011000 imm:10

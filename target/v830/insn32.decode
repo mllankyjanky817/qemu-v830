@@ -1,0 +1,54 @@
+# NEC V830 instruction decode tree part for double-word instructions.
+# The V830 instruction stream is little-endian 16-bit words.
+
+&rr32 r1 r2
+&rrr r1 r2 r3
+&rri src dst imm
+&jump32 disp
+
+# Conditional branches and the two-word relative jumps.
+JR      101010 disp:s26                    &jump32
+JAL     101011 disp:s26                    &jump32
+
+# Two-word immediate, load/store, I/O, and atomic operations.
+MOVEA   101000 dst:5 src:5 imm:s16         &rri
+ADDI    101001 dst:5 src:5 imm:s16         &rri
+ORI     101100 dst:5 src:5 imm:16          &rri
+ANDI    101101 dst:5 src:5 imm:16          &rri
+XORI    101110 dst:5 src:5 imm:16          &rri
+MOVHI   101111 dst:5 src:5 imm:16          &rri
+LD_B    110000 dst:5 src:5 imm:s16         &rri
+LD_H    110001 dst:5 src:5 imm:s16         &rri
+MULI    110010 dst:5 src:5 imm:s16         &rri
+LD_W    110011 dst:5 src:5 imm:s16         &rri
+ST_B    110100 dst:5 src:5 imm:s16         &rri
+ST_H    110101 dst:5 src:5 imm:s16         &rri
+MACI    110110 dst:5 src:5 imm:s16         &rri
+ST_W    110111 dst:5 src:5 imm:s16         &rri
+IN_B    111000 dst:5 src:5 imm:s16         &rri
+IN_H    111001 dst:5 src:5 imm:s16         &rri
+CAXI    111010 dst:5 src:5 imm:s16         &rri
+IN_W    111011 dst:5 src:5 imm:s16         &rri
+OUT_B   111100 dst:5 src:5 imm:s16         &rri
+OUT_H   111101 dst:5 src:5 imm:s16         &rri
+OUT_W   111111 dst:5 src:5 imm:s16         &rri
+# Special instructions
+# (originally EXT     111110 dst:5 src:5 imm:s16         &long and was handled in translate and helpers)
+
+SATADD3 111110 r2:5 r1:5 010000 ----- r3:5 &rrr
+SATSUB3 111110 r2:5 r1:5 010001 ----- r3:5 &rrr
+MIN3    111110 r2:5 r1:5 010010 ----- r3:5 &rrr
+MAX3    111110 r2:5 r1:5 010011 ----- r3:5 &rrr
+SHLD3   111110 r2:5 r1:5 011000 ----- r3:5 &rrr
+SHRD3   111110 r2:5 r1:5 011001 ----- r3:5 &rrr
+MACT3   111110 r2:5 r1:5 011100 ----- r3:5 &rrr
+MAC3    111110 r2:5 r1:5 011101 ----- r3:5 &rrr
+MULT3   111110 r2:5 r1:5 011110 ----- r3:5 &rrr
+MUL3    111110 r2:5 r1:5 011111 ----- r3:5 &rrr
+
+BILD    111110 r2:5 r1:5 100000 ---------- &rr32
+BDLD    111110 r2:5 r1:5 100001 ---------- &rr32
+BIST    111110 r2:5 r1:5 100010 ---------- &rr32
+BDST    111110 r2:5 r1:5 100011 ---------- &rr32
+
+

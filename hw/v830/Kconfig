@@ -1,0 +1,4 @@
+config V832_BOARD
+    bool
+    default y
+    depends on V830

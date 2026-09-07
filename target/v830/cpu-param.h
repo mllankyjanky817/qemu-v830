@@ -1,0 +1,7 @@
+#ifndef V830_CPU_PARAM_H
+#define V830_CPU_PARAM_H
+
+#define TARGET_PAGE_BITS 12
+#define TARGET_VIRT_ADDR_SPACE_BITS 32
+
+#endif

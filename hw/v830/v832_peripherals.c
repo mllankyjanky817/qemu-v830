@@ -14,6 +14,16 @@
 #define V832_IO_BASE 0xc0000000u
 #define V832_IO_SIZE 0x400
 
+#define PORT  0x00
+#define PM    0x02
+#define PC    0x04
+#define PORTA 0xf0
+#define PAM   0xf2
+#define PAC   0xf4
+#define PORTB 0xf6
+#define PBM   0xf8
+#define PBC   0xfa
+
 #define UART_ASIM00 0x90
 #define UART_ASIM01 0x92
 #define UART_ASIS0  0x94
@@ -69,6 +79,10 @@
 
 static const unsigned v832_intp_sources[8] = {
     0, 4, 8, 12, 6, 5, 2, 1,
+};
+
+static const int v832_portb_intp[8] = {
+    -1, -1, 0, 2, 1, 5, 6, 3,
 };
 
 static unsigned v832_intp_mode(const V832PeripheralsState *s, unsigned n)
@@ -169,6 +183,82 @@ static void v832_peripherals_intp(void *opaque, int n, int level)
         }
     } else if (active && (mode == 2 || mode == 3)) {
         v832_raise_irq(s, source);
+    }
+}
+
+static void v832_update_port_outputs(V832PeripheralsState *s)
+{
+    for (unsigned bit = 0; bit < 5; bit++) {
+        qemu_set_irq(s->port_out[bit],
+                     !(s->pm & BIT(bit)) && !(s->pc & BIT(bit)) &&
+                     !!(s->port & BIT(bit)));
+    }
+    for (unsigned bit = 0; bit < 8; bit++) {
+        qemu_set_irq(s->porta_out[bit],
+                     !(s->pam & BIT(bit)) &&
+                     ((s->pac & BIT(bit)) ?
+                      ((bit & 1) && !!(s->dmaak_level & BIT(bit / 2))) :
+                      !!(s->porta & BIT(bit))));
+        qemu_set_irq(s->portb_out[bit],
+                     !(s->pbm & BIT(bit)) && !(s->pbc & BIT(bit)) &&
+                     !!(s->portb & BIT(bit)));
+    }
+}
+
+static void v832_port_in(void *opaque, int n, int level)
+{
+    V832PeripheralsState *s = opaque;
+
+    if (n < 5) {
+        if (level) {
+            s->port_input |= BIT(n);
+        } else {
+            s->port_input &= ~BIT(n);
+        }
+    }
+}
+
+static void v832_porta_in(void *opaque, int n, int level)
+{
+    V832PeripheralsState *s = opaque;
+
+    if (level) {
+        s->porta_input |= BIT(n);
+    } else {
+        s->porta_input &= ~BIT(n);
+    }
+    if ((s->pac & BIT(n)) && !(n & 1)) {
+        qemu_set_irq(s->dmarq_out[n / 2], level);
+    }
+}
+
+static void v832_dmaak_in(void *opaque, int n, int level)
+{
+    V832PeripheralsState *s = opaque;
+
+    if (n < 4) {
+        if (level) {
+            s->dmaak_level |= BIT(n);
+        } else {
+            s->dmaak_level &= ~BIT(n);
+        }
+        if (s->pac & BIT(2 * n + 1)) {
+            qemu_set_irq(s->porta_out[2 * n + 1], level);
+        }
+    }
+}
+
+static void v832_portb_in(void *opaque, int n, int level)
+{
+    V832PeripheralsState *s = opaque;
+
+    if (level) {
+        s->portb_input |= BIT(n);
+    } else {
+        s->portb_input &= ~BIT(n);
+    }
+    if ((s->pbc & BIT(n)) && v832_portb_intp[n] >= 0) {
+        v832_peripherals_intp(s, v832_portb_intp[n], level);
     }
 }
 
@@ -651,6 +741,9 @@ static uint64_t v832_peripherals_read(void *opaque, hwaddr offset,
     V832PeripheralsState *s = opaque;
 
     switch (offset) {
+    case PORT:  return (s->port & ~s->pm) | (s->port_input & s->pm);
+    case PM:    return s->pm | 0xe0;
+    case PC:    return s->pc;
     case UART_ASIM00: return s->asim00;
     case UART_ASIM01: return s->asim01;
     case UART_ASIS0: return s->asis0;
@@ -679,6 +772,12 @@ static uint64_t v832_peripherals_read(void *opaque, hwaddr offset,
         v832_timer4_sync(s, qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL));
         return s->tm4;
     case CM4: return s->cm4;
+    case PORTA: return (s->porta & ~s->pam) | (s->porta_input & s->pam);
+    case PAM:   return s->pam;
+    case PAC:   return s->pac;
+    case PORTB: return (s->portb & ~s->pbm) | (s->portb_input & s->pbm);
+    case PBM:   return s->pbm;
+    case PBC:   return s->pbc;
     case IGP: return s->igp;
     case IRR: return s->irr;
     case IMR: return s->imr;
@@ -695,6 +794,18 @@ static void v832_peripherals_write(void *opaque, hwaddr offset,
     uint8_t byte = value;
 
     switch (offset) {
+    case PORT:
+        s->port = byte & 0x1f;
+        v832_update_port_outputs(s);
+        return;
+    case PM:
+        s->pm = byte & 0x1f;
+        v832_update_port_outputs(s);
+        return;
+    case PC:
+        s->pc = byte & 0x1f;
+        v832_update_port_outputs(s);
+        return;
     case UART_ASIM00: s->asim00 = byte & 0x7f; return;
     case UART_ASIM01: s->asim01 = byte & 1; return;
     case UART_ASIS0:
@@ -790,6 +901,30 @@ static void v832_peripherals_write(void *opaque, hwaddr offset,
             v832_timer4_schedule(s);
         }
         return;
+    case PORTA:
+        s->porta = byte;
+        v832_update_port_outputs(s);
+        return;
+    case PAM:
+        s->pam = byte;
+        v832_update_port_outputs(s);
+        return;
+    case PAC:
+        s->pac = byte;
+        v832_update_port_outputs(s);
+        return;
+    case PORTB:
+        s->portb = byte;
+        v832_update_port_outputs(s);
+        return;
+    case PBM:
+        s->pbm = byte;
+        v832_update_port_outputs(s);
+        return;
+    case PBC:
+        s->pbc = byte;
+        v832_update_port_outputs(s);
+        return;
     default: return;
     }
 }
@@ -826,6 +961,19 @@ static void v832_peripherals_reset(DeviceState *dev)
     s->tmc1 = 0;
     s->tmc4 = 0;
     s->tovs = 0;
+    s->port = 0;
+    s->pm = 0xff;
+    s->pc = 0;
+    s->porta = 0;
+    s->pam = 0xff;
+    s->pac = 0;
+    s->portb = 0;
+    s->pbm = 0xff;
+    s->pbc = 0;
+    s->port_input = 0;
+    s->porta_input = 0;
+    s->portb_input = 0;
+    s->dmaak_level = 0;
     s->timer4_clear_pending = false;
     s->timer1_last_ns = 0;
     s->timer4_last_ns = 0;
@@ -857,6 +1005,14 @@ static void v832_peripherals_realize(DeviceState *dev, Error **errp)
     sysbus_init_mmio(SYS_BUS_DEVICE(dev), &s->iomem);
     sysbus_init_irq(SYS_BUS_DEVICE(dev), &s->irq);
     qdev_init_gpio_in_named(dev, v832_peripherals_intp, "intp", 8);
+    qdev_init_gpio_in_named(dev, v832_port_in, "port-in", 5);
+    qdev_init_gpio_in_named(dev, v832_porta_in, "porta-in", 8);
+    qdev_init_gpio_in_named(dev, v832_portb_in, "portb-in", 8);
+    qdev_init_gpio_in_named(dev, v832_dmaak_in, "dmaak-in", 4);
+    qdev_init_gpio_out_named(dev, s->port_out, "port-out", 5);
+    qdev_init_gpio_out_named(dev, s->porta_out, "porta-out", 8);
+    qdev_init_gpio_out_named(dev, s->portb_out, "portb-out", 8);
+    qdev_init_gpio_out_named(dev, s->dmarq_out, "dmarq-out", 4);
     qdev_init_gpio_in_named(dev, v832_csi_sclk_in, "sclk-in", 1);
     qdev_init_gpio_in_named(dev, v832_csi_si_in, "si", 1);
     qdev_init_gpio_out_named(dev, &s->csi_sclk_out, "sclk-out", 1);

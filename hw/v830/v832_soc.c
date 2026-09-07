@@ -93,6 +93,15 @@ static void v832_soc_realize(DeviceState *dev, Error **errp)
     if (!sysbus_realize(SYS_BUS_DEVICE(&s->dma), errp)) {
         return;
     }
+    for (unsigned channel = 0; channel < V832_DMA_CHANNELS; channel++) {
+        qdev_connect_gpio_out_named(DEVICE(&s->peripherals), "dmarq-out",
+                                    channel,
+                                    qdev_get_gpio_in(DEVICE(&s->dma), channel));
+        qdev_connect_gpio_out_named(DEVICE(&s->dma), "dmaak", channel,
+                                    qdev_get_gpio_in_named(
+                                        DEVICE(&s->peripherals), "dmaak-in",
+                                        channel));
+    }
     sysbus_mmio_map_overlap(SYS_BUS_DEVICE(&s->dma), 0,
                             V832_SOC_IO_BASE + 0x30, 10);
 }

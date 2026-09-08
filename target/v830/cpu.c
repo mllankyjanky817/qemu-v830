@@ -79,6 +79,11 @@ static int v830_cpu_mmu_index(CPUState *cs, bool ifetch)
     return ifetch ? V830_MMU_INTERNAL : V830_MMU_DATA;
 }
 
+static hwaddr v830_cpu_get_phys_addr_debug(CPUState *cs, vaddr addr)
+{
+    return addr;
+}
+
 static bool v830_cpu_tlb_fill(CPUState *cs, vaddr address, int size,
                               MMUAccessType access_type, int mmu_idx,
                               bool probe, uintptr_t retaddr)
@@ -257,6 +262,7 @@ static ObjectClass *v830_cpu_class_by_name(const char *cpu_model)
 
 static const struct SysemuCPUOps v830_sysemu_ops = {
     .has_work = v830_cpu_has_work,
+    .get_phys_addr_debug = v830_cpu_get_phys_addr_debug,
 };
 
 static const TCGCPUOps v830_tcg_ops = {

@@ -64,6 +64,11 @@ static void v830_cpu_set_nmi(void *opaque, int irq, int level)
     env->nmi_level = level;
 }
 
+static uint32_t v830_interrupt_vector_base(const V830CPUState *env)
+{
+    return (env->hccw & 1) ? 0xfe000000u : 0xfffffe00u;
+}
+
 void v830_cpu_set_interrupt_source(V830CPU *cpu, unsigned source)
 {
     cpu->env.interrupt_source = source;
@@ -159,7 +164,7 @@ void v830_cpu_do_interrupt(CPUState *cs)
         }
         cpu_reset_interrupt(cs, CPU_INTERRUPT_HARD);
         cause = 0xfe00u + source * 0x10u;
-        handler = 0xfffffe00u - ((env->hccw & 1) * 0x1FFFE00u) + source * 0x10u; // HCCW.IHA is 0 by default; sets the base for handler addresses to either 0xfffffe00 when 0 or 0xfe000000 when 1.
+        handler = v830_interrupt_vector_base(env) + source * 0x10u;
         env->eipsw = v830_psw_read(env);
         env->ecr = (env->ecr & 0xffff0000u) | cause;
         env->psw |= V830_PSW_EP | V830_PSW_ID;
@@ -174,11 +179,11 @@ void v830_cpu_do_interrupt(CPUState *cs)
     switch (cs->exception_index) {
     case V830_EXCP_ILLEGAL:
         cause = 0xff90;
-        handler = 0xffffff90;
+        handler = 0xffffff90u;
         break;
     case V830_EXCP_DIV0:
         cause = 0xff80;
-        handler = 0xffffff80;
+        handler = 0xffffff80u;
         break;
     default:
         return;
@@ -188,13 +193,13 @@ void v830_cpu_do_interrupt(CPUState *cs)
         env->dpc = env->pc;
         env->dpsw = v830_psw_read(env);
         env->psw |= V830_PSW_ID;
-        handler = 0xffffffe0;
+        handler = 0xffffffe0u;
     } else if (env->psw & V830_PSW_EP) {
         env->fepc = env->pc;
         env->fepsw = v830_psw_read(env);
         env->ecr = (env->ecr & 0xffff) | (cause << 16);
         env->psw |= V830_PSW_NP | V830_PSW_ID;
-        handler = 0xffffffd0;
+        handler = 0xffffffd0u;
     } else {
         env->eipc = env->pc;
         env->eipsw = v830_psw_read(env);

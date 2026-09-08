@@ -46,6 +46,7 @@ OBJECT_DECLARE_SIMPLE_TYPE(V832TestBoardState, V832_TEST_BOARD)
 typedef struct V832TestSSILoopback {
     SSIPeripheral parent_obj;
     uint32_t last_value;
+    V832TestBoardState *board;
 } V832TestSSILoopback;
 
 OBJECT_DECLARE_SIMPLE_TYPE(V832TestSSILoopback, V832_TEST_SSI)
@@ -83,6 +84,9 @@ static uint32_t v832_test_ssi_transfer(SSIPeripheral *dev, uint32_t value)
     V832TestSSILoopback *loopback = V832_TEST_SSI(dev);
 
     loopback->last_value = value;
+    if (loopback->board) {
+        loopback->board->ssi_last = value;
+    }
     return value;
 }
 
@@ -367,8 +371,14 @@ static void v832_test_board_init(MachineState *machine)
     qdev_connect_gpio_out_named(DEVICE(&s->soc.dma), "tc_stopak", 0,
                                 qemu_allocate_irq(v832_test_tc_stopak, s, 0));
 
-    ssi_realize_and_unref(qdev_new(TYPE_V832_TEST_SSI),
-                          s->soc.peripherals.csi_bus, &error_fatal);
+    {
+        V832TestSSILoopback *loopback =
+            V832_TEST_SSI(qdev_new(TYPE_V832_TEST_SSI));
+
+        loopback->board = s;
+        ssi_realize_and_unref(DEVICE(loopback), s->soc.peripherals.csi_bus,
+                              &error_fatal);
+    }
 }
 
 static void v832_test_board_class_init(ObjectClass *oc, const void *data)

@@ -128,14 +128,16 @@ uint32_t helper_trap(V830CPUState *env, uint32_t vector, uint32_t return_pc)
     if (env->psw & V830_PSW_NP) {
         env->dpc = return_pc;
         env->dpsw = v830_psw_read(env);
-        env->psw |= V830_PSW_ID;
+        env->psw |= V830_PSW_DP | V830_PSW_NP | V830_PSW_EP |
+                    V830_PSW_ID;
         env->pc = 0xffffffe0u;
     } else if (env->psw & V830_PSW_EP) {
         env->fepc = return_pc;
         env->fepsw = v830_psw_read(env);
-        env->ecr = (env->ecr & 0xffffu) | (0xffd0u << 16);
-        env->psw = (env->psw | V830_PSW_NP | V830_PSW_ID) & ~V830_PSW_EP;
-        env->pc = 0xffffffe0u;
+        env->ecr = (env->ecr & 0xffffu) |
+                   (((handler_base + (vector & 0xf)) & 0xffffu) << 16);
+        env->psw |= V830_PSW_NP | V830_PSW_ID;
+        env->pc = 0xffffffd0u;
     } else {
         env->eipc = return_pc;
         env->eipsw = v830_psw_read(env);

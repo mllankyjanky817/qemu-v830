@@ -30,6 +30,7 @@ typedef struct V832PeripheralsState {
 	uint16_t rxb0, txs0;
 	uint8_t brg0, bprm0;
 	bool tx_busy;
+	bool uart_loopback;
 	uint16_t tm1, tm4, cc[4], cm4, tum1;
 	uint16_t igp, irr, imr, imod;
 	uint8_t intp_level[8];

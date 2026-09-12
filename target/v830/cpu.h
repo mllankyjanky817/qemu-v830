@@ -18,6 +18,7 @@
                             V830_PSW_CY)
 #define V830_PSW_SAT       (1u << 10)
 #define V830_PSW_ID        (1u << 12)
+#define V830_PSW_DP        (1u << 11)
 #define V830_PSW_EP        (1u << 14)
 #define V830_PSW_NP        (1u << 15)
 #define V830_PSW_I_SHIFT   16

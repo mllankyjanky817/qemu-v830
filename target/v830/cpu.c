@@ -19,6 +19,11 @@ static vaddr v830_cpu_get_pc(CPUState *cs)
     return cpu_env(cs)->pc;
 }
 
+static const char *v830_gdb_arch_name(CPUState *cs)
+{
+    return "v830";
+}
+
 static TCGTBCPUState v830_get_tb_cpu_state(CPUState *cs)
 {
     V830CPUState *env = cpu_env(cs);
@@ -197,7 +202,8 @@ void v830_cpu_do_interrupt(CPUState *cs)
     if (env->psw & V830_PSW_NP) {
         env->dpc = env->pc;
         env->dpsw = v830_psw_read(env);
-        env->psw |= V830_PSW_ID;
+        env->psw |= V830_PSW_DP | V830_PSW_NP | V830_PSW_EP |
+                    V830_PSW_ID;
         handler = 0xffffffe0u;
     } else if (env->psw & V830_PSW_EP) {
         env->fepc = env->pc;
@@ -302,6 +308,7 @@ static void v830_cpu_class_init(ObjectClass *oc, const void *data)
     cc->set_pc = v830_cpu_set_pc;
     cc->get_pc = v830_cpu_get_pc;
     cc->dump_state = v830_cpu_dump_state;
+    cc->gdb_arch_name = v830_gdb_arch_name;
     cc->gdb_read_register = v830_cpu_gdb_read_register;
     cc->gdb_write_register = v830_cpu_gdb_write_register;
     cc->gdb_core_xml_file = "v830-cpu.xml";

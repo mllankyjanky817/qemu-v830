@@ -647,10 +647,6 @@ static void v832_timer4_sync(V832PeripheralsState *s, uint64_t now_ns)
         }
         if (ticks == 0) {
             s->timer4_clear_pending = true;
-            if (s->dma) {
-                v832_dma_set_internal_request(s->dma,
-                                              V832_DMA_REQUEST_TIMER4);
-            }
             break;
         }
 
@@ -736,6 +732,10 @@ static void v832_timer4_tick(void *opaque)
             s->tm4 = s->cm4;
             s->timer4_clear_pending = true;
             v832_raise_irq(s, INTCM4_SOURCE);
+            if (s->dma) {
+                v832_dma_set_internal_request(s->dma,
+                                              V832_DMA_REQUEST_TIMER4);
+            }
         } else {
             s->tm4 = 0;
             s->tovs |= 1u << 4;
@@ -803,6 +803,13 @@ static void v832_peripherals_write(void *opaque, hwaddr offset,
     V832PeripheralsState *s = opaque;
     uint8_t byte = value;
 
+    qemu_log_mask(CPU_LOG_INT,
+                  "V832 internal I/O write: addr=0x%08" PRIx64
+                  " offset=0x%03" PRIx64 " size=%u value=0x%08" PRIx64
+                  "\n",
+                  (uint64_t)V832_IO_BASE + offset, (uint64_t)offset,
+                  size, value);
+
     switch (offset) {
     case PORT:
         s->port = byte & 0x1f;
@@ -827,6 +834,11 @@ static void v832_peripherals_write(void *opaque, hwaddr offset,
         if (qemu_chr_fe_backend_connected(&s->chr)) {
             uint8_t ch = s->txs0;
             qemu_chr_fe_write_all(&s->chr, &ch, 1);
+        }
+        if (s->uart_loopback) {
+            uint8_t ch = s->txs0;
+
+            v832_uart_receive(s, &ch, 1);
         }
         s->tx_busy = false;
         v832_raise_irq(s, V832_IRQ_UART_TX);
@@ -1038,6 +1050,8 @@ static void v832_peripherals_realize(DeviceState *dev, Error **errp)
 
 static const Property v832_peripherals_properties[] = {
     DEFINE_PROP_CHR("chardev", V832PeripheralsState, chr),
+    DEFINE_PROP_BOOL("uart-loopback", V832PeripheralsState,
+                     uart_loopback, false),
 };
 
 static void v832_peripherals_class_init(ObjectClass *klass, const void *data)

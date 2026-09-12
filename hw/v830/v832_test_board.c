@@ -326,6 +326,8 @@ static void v832_test_board_init(MachineState *machine)
     clock_set_hz(s->osc_clk, 23800000);
     object_initialize_child(OBJECT(machine), "soc", &s->soc, TYPE_V832_SOC);
     s->soc.external = &s->external;
+    object_property_set_bool(OBJECT(&s->soc.peripherals), "uart-loopback",
+                             true, &error_fatal);
     qdev_connect_clock_in(DEVICE(&s->soc), "osc", s->osc_clk);
     if (!sysbus_realize(SYS_BUS_DEVICE(&s->soc), &error_fatal)) {
         return;

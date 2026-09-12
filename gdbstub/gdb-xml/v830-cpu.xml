@@ -1,109 +1,54 @@
 <?xml version="1.0"?>
-
 <!DOCTYPE feature SYSTEM "gdb-target.dtd">
-
 <feature name="org.gnu.gdb.v830.core">
-
-<flags id="v830-psw" size="32">
-
-<field name="z" start="0" end="0"/>
-
-<field name="s" start="1" end="1"/>
-
-<field name="ov" start="2" end="2"/>
-
-<field name="cy" start="3" end="3"/>
-
-</flags>
-
-<reg name="r0" bitsize="32" type="uint32" group="General Purpose Registers"/>
-
-<reg name="r1" bitsize="32" type="uint32" group="General Purpose Registers"/>
-
-<reg name="r2" bitsize="32" type="uint32" group="General Purpose Registers"/>
-
-<reg name="r3" bitsize="32" type="uint32" group="General Purpose Registers"/>
-
-<reg name="r4" bitsize="32" type="uint32" group="General Purpose Registers"/>
-
-<reg name="r5" bitsize="32" type="uint32" group="General Purpose Registers"/>
-
-<reg name="r6" bitsize="32" type="uint32" group="General Purpose Registers"/>
-
-<reg name="r7" bitsize="32" type="uint32" group="General Purpose Registers"/>
-
-<reg name="r8" bitsize="32" type="uint32" group="General Purpose Registers"/>
-
-<reg name="r9" bitsize="32" type="uint32" group="General Purpose Registers"/>
-
-<reg name="r10" bitsize="32" type="uint32" group="General Purpose Registers"/>
-
-<reg name="r11" bitsize="32" type="uint32" group="General Purpose Registers"/>
-
-<reg name="r12" bitsize="32" type="uint32" group="General Purpose Registers"/>
-
-<reg name="r13" bitsize="32" type="uint32" group="General Purpose Registers"/>
-
-<reg name="r14" bitsize="32" type="uint32" group="General Purpose Registers"/>
-
-<reg name="r15" bitsize="32" type="uint32" group="General Purpose Registers"/>
-
-<reg name="r16" bitsize="32" type="uint32" group="General Purpose Registers"/>
-
-<reg name="r17" bitsize="32" type="uint32" group="General Purpose Registers"/>
-
-<reg name="r18" bitsize="32" type="uint32" group="General Purpose Registers"/>
-
-<reg name="r19" bitsize="32" type="uint32" group="General Purpose Registers"/>
-
-<reg name="r20" bitsize="32" type="uint32" group="General Purpose Registers"/>
-
-<reg name="r21" bitsize="32" type="uint32" group="General Purpose Registers"/>
-
-<reg name="r22" bitsize="32" type="uint32" group="General Purpose Registers"/>
-
-<reg name="r23" bitsize="32" type="uint32" group="General Purpose Registers"/>
-
-<reg name="r24" bitsize="32" type="uint32" group="General Purpose Registers"/>
-
-<reg name="r25" bitsize="32" type="uint32" group="General Purpose Registers"/>
-
-<reg name="r26" bitsize="32" type="uint32" group="General Purpose Registers"/>
-
-<reg name="r27" bitsize="32" type="uint32" group="General Purpose Registers"/>
-
-<reg name="r28" bitsize="32" type="uint32" group="General Purpose Registers"/>
-
-<reg name="r29" bitsize="32" type="uint32" group="General Purpose Registers"/>
-
-<reg name="r30" bitsize="32" type="uint32" group="General Purpose Registers"/>
-
-<reg name="lp" bitsize="32" type="uint32" group="General Purpose Registers"/>
-
-
-<reg name="eipc" bitsize="32" type="uint32" group="Special Registers"/>
-
-<reg name="eipsw" bitsize="32" type="uint32" group="Special Registers"/>
-
-<reg name="fepc" bitsize="32" type="uint32" group="Special Registers"/>
-
-<reg name="fepsw" bitsize="32" type="uint32" group="Special Registers"/>
-
-<reg name="ecr" bitsize="32" type="uint32" group="Special Registers"/>
-
-<reg name="psw" bitsize="32" type="uint32" group="Special Registers"/>
-
-<reg name="pir" bitsize="32" type="uint32" group="Special Registers"/>
-
-<reg name="tkcw" bitsize="32" type="uint32" group="Special Registers"/>
-
-<reg name="dpc" bitsize="32" type="uint32" group="Special Registers"/>
-
-<reg name="dpsw" bitsize="32" type="uint32" group="Special Registers"/>
-
-<reg name="hccw" bitsize="32" type="uint32" group="Special Registers"/>
-
-<reg name="pc" bitsize="32" type="code_ptr" group="Special Registers"/>
-
+    <flags id="v830-psw" size="32">
+        <field name="z" start="0" end="0"/>
+        <field name="s" start="1" end="1"/>
+        <field name="ov" start="2" end="2"/>
+        <field name="cy" start="3" end="3"/>
+    </flags>
+    <reg name="r0" bitsize="32" type="uint32" group="General Purpose Registers"/>
+    <reg name="r1" bitsize="32" type="uint32" group="General Purpose Registers"/>
+    <reg name="r2" bitsize="32" type="uint32" group="General Purpose Registers"/>
+    <reg name="r3" bitsize="32" type="uint32" group="General Purpose Registers"/>
+    <reg name="r4" bitsize="32" type="uint32" group="General Purpose Registers"/>
+    <reg name="r5" bitsize="32" type="uint32" group="General Purpose Registers"/>
+    <reg name="r6" bitsize="32" type="uint32" group="General Purpose Registers"/>
+    <reg name="r7" bitsize="32" type="uint32" group="General Purpose Registers"/>
+    <reg name="r8" bitsize="32" type="uint32" group="General Purpose Registers"/>
+    <reg name="r9" bitsize="32" type="uint32" group="General Purpose Registers"/>
+    <reg name="r10" bitsize="32" type="uint32" group="General Purpose Registers"/>
+    <reg name="r11" bitsize="32" type="uint32" group="General Purpose Registers"/>
+    <reg name="r12" bitsize="32" type="uint32" group="General Purpose Registers"/>
+    <reg name="r13" bitsize="32" type="uint32" group="General Purpose Registers"/>
+    <reg name="r14" bitsize="32" type="uint32" group="General Purpose Registers"/>
+    <reg name="r15" bitsize="32" type="uint32" group="General Purpose Registers"/>
+    <reg name="r16" bitsize="32" type="uint32" group="General Purpose Registers"/>
+    <reg name="r17" bitsize="32" type="uint32" group="General Purpose Registers"/>
+    <reg name="r18" bitsize="32" type="uint32" group="General Purpose Registers"/>
+    <reg name="r19" bitsize="32" type="uint32" group="General Purpose Registers"/>
+    <reg name="r20" bitsize="32" type="uint32" group="General Purpose Registers"/>
+    <reg name="r21" bitsize="32" type="uint32" group="General Purpose Registers"/>
+    <reg name="r22" bitsize="32" type="uint32" group="General Purpose Registers"/>
+    <reg name="r23" bitsize="32" type="uint32" group="General Purpose Registers"/>
+    <reg name="r24" bitsize="32" type="uint32" group="General Purpose Registers"/>
+    <reg name="r25" bitsize="32" type="uint32" group="General Purpose Registers"/>
+    <reg name="r26" bitsize="32" type="uint32" group="General Purpose Registers"/>
+    <reg name="r27" bitsize="32" type="uint32" group="General Purpose Registers"/>
+    <reg name="r28" bitsize="32" type="uint32" group="General Purpose Registers"/>
+    <reg name="r29" bitsize="32" type="uint32" group="General Purpose Registers"/>
+    <reg name="r30" bitsize="32" type="uint32" group="General Purpose Registers"/>
+    <reg name="lp" bitsize="32" type="uint32" group="General Purpose Registers"/>
+    <reg name="eipc" bitsize="32" type="uint32" group="Special Registers"/>
+    <reg name="eipsw" bitsize="32" type="uint32" group="Special Registers"/>
+    <reg name="fepc" bitsize="32" type="uint32" group="Special Registers"/>
+    <reg name="fepsw" bitsize="32" type="uint32" group="Special Registers"/>
+    <reg name="ecr" bitsize="32" type="uint32" group="Special Registers"/>
+    <reg name="psw" bitsize="32" type="uint32" group="Special Registers"/>
+    <reg name="pir" bitsize="32" type="uint32" group="Special Registers"/>
+    <reg name="tkcw" bitsize="32" type="uint32" group="Special Registers"/>
+    <reg name="dpc" bitsize="32" type="uint32" group="Special Registers"/>
+    <reg name="dpsw" bitsize="32" type="uint32" group="Special Registers"/>
+    <reg name="hccw" bitsize="32" type="uint32" group="Special Registers"/>
+    <reg name="pc" bitsize="32" type="code_ptr" group="Special Registers"/>
 </feature>
-

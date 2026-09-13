@@ -83,7 +83,7 @@ static const unsigned v832_intp_sources[8] = {
 };
 
 static const int v832_portb_intp[8] = {
-    -1, -1, 0, 2, 1, 5, 6, 3,
+    -1, -1, 0, 1, 4, 5, 8, 12,
 };
 
 static unsigned v832_intp_mode(const V832PeripheralsState *s, unsigned n)
@@ -161,7 +161,7 @@ static void v832_raise_irq(V832PeripheralsState *s, unsigned source)
 static void v832_peripherals_intp(void *opaque, int n, int level)
 {
     V832PeripheralsState *s = opaque;
-    unsigned source;
+    int source;
     unsigned mode;
     bool active;
 
@@ -261,14 +261,30 @@ static void v832_dmaak_in(void *opaque, int n, int level)
 static void v832_portb_in(void *opaque, int n, int level)
 {
     V832PeripheralsState *s = opaque;
+    bool previous;
+    int source;
+    unsigned mode;
+    bool active;
 
     if (level) {
+        previous = !!(s->portb_input & BIT(n));
         s->portb_input |= BIT(n);
     } else {
+        previous = !!(s->portb_input & BIT(n));
         s->portb_input &= ~BIT(n);
     }
-    if ((s->pbc & BIT(n)) && v832_portb_intp[n] >= 0) {
-        v832_peripherals_intp(s, v832_portb_intp[n], level);
+    source = v832_portb_intp[n];
+    mode = (s->imod >> (8 + n * 2)) & 0x3;
+    active = mode == 3 ? level != previous : level && !previous;
+    if ((s->pbc & BIT(n)) && source >= 0) {
+        if (mode == 0 && level) {
+            v832_raise_irq(s, source);
+        } else if (mode == 0) {
+            s->irr &= (uint16_t)~BIT(source);
+            v832_update_irq(s);
+        } else if (active) {
+            v832_raise_irq(s, source);
+        }
     }
 }
 

@@ -4,7 +4,6 @@
 #include "hw/core/qdev-properties-system.h"
 #include "chardev/char-fe.h"
 #include "qapi/error.h"
-#include "qemu/log.h"
 #include "qemu/timer.h"
 #include "system/memory.h"
 #include "hw/core/qdev-clock.h"
@@ -179,7 +178,6 @@ static void v832_raise_irq(V832PeripheralsState *s, unsigned source)
 {
     s->irr |= (uint16_t)(1u << source);
     v832_update_irq(s);
-    qemu_log_mask(CPU_LOG_INT, "V832 IRQ source %u raised\n", source);
 }
 
 static void v832_peripherals_intp(void *opaque, int n, int level)
@@ -802,12 +800,6 @@ static void v832_timer4_tick(void *opaque)
         return;
     }
 
-    qemu_log_mask(CPU_LOG_INT,
-                  "V832 TIMER4: virtual=%" PRId64
-                  " tm4=%04x cm4=%04x clear_pending=%d\n",
-                  qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL), s->tm4, s->cm4,
-                  s->timer4_clear_pending);
-
     if (s->timer4_clear_pending) {
         s->tm4 = 0;
         s->timer4_clear_pending = false;
@@ -891,13 +883,6 @@ static void v832_peripherals_write(void *opaque, hwaddr offset,
 {
     V832PeripheralsState *s = opaque;
     uint8_t byte = value;
-
-    qemu_log_mask(CPU_LOG_INT,
-                  "V832 internal I/O write: addr=0x%08" PRIx64
-                  " offset=0x%03" PRIx64 " size=%u value=0x%08" PRIx64
-                  "\n",
-                  (uint64_t)V832_IO_BASE + offset, (uint64_t)offset,
-                  size, value);
 
     switch (offset) {
     case PORT:

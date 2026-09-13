@@ -45,6 +45,7 @@ typedef struct V832PeripheralsState {
 	uint8_t port_input, porta_input, portb_input;
 	uint8_t dmaak_level;
 	bool timer4_clear_pending;
+	bool timer1_waiting_clear;
 	uint64_t timer1_last_ns, timer4_last_ns;
 	QEMUTimer timer1, timer4, csi_timer;
 } V832PeripheralsState;

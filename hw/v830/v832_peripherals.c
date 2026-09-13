@@ -62,6 +62,8 @@
 #define ASIS0_FE   0x02
 #define ASIS0_OV   0x01
 #define TMC1_CE    0x80
+#define TMC1_ETI   0x10
+#define TUM1_ECLR  0x1000
 #define TMC4_CE    0x80
 #define TMC1_OVIE  0x40
 #define CSIM0_CTXE 0x80
@@ -85,6 +87,10 @@ static const unsigned v832_intp_sources[8] = {
 static const int v832_portb_intp[8] = {
     -1, -1, 0, 1, 4, 5, 8, 12,
 };
+
+static void v832_timer1_external_tick(V832PeripheralsState *s);
+static void v832_timer1_schedule(V832PeripheralsState *s);
+static void v832_timer1_sync(V832PeripheralsState *s, uint64_t now_ns);
 
 static unsigned v832_intp_mode(const V832PeripheralsState *s, unsigned n)
 {
@@ -174,6 +180,14 @@ static void v832_peripherals_intp(void *opaque, int n, int level)
     active = mode == 3 ? level != s->intp_level[n]
                        : level && !s->intp_level[n];
     s->intp_level[n] = level;
+
+    if (n >= 4 && active && !(s->tum1 & BIT(n))) {
+        unsigned capture = n - 4;
+
+        v832_timer1_sync(s, qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL));
+        s->cc[capture] = s->tm1;
+        v832_raise_irq(s, source);
+    }
 
     if (mode == 0) {
         if (level) {
@@ -284,6 +298,21 @@ static void v832_portb_in(void *opaque, int n, int level)
             v832_update_irq(s);
         } else if (active) {
             v832_raise_irq(s, source);
+        }
+    }
+    if (n == 0 && (s->pbc & BIT(0)) && level && !previous &&
+        (s->tmc1 & (TMC1_CE | TMC1_ETI)) == (TMC1_CE | TMC1_ETI)) {
+        v832_timer1_external_tick(s);
+    }
+    if (n == 1 && (s->pbc & BIT(1)) &&
+        ((s->tum1 >> 8) & 0x3) != 0 &&
+        (((s->tum1 >> 8) & 0x3) == 0x3 ||
+         (level && !previous))) {
+        s->tm1 = 0;
+        s->timer1_waiting_clear = false;
+        if (s->tmc1 & TMC1_CE) {
+            s->timer1_last_ns = qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL);
+            v832_timer1_schedule(s);
         }
     }
 }
@@ -583,7 +612,9 @@ static void v832_timer1_sync(V832PeripheralsState *s, uint64_t now_ns)
     uint64_t elapsed_ns;
     uint64_t ticks;
 
-    if (!(s->tmc1 & TMC1_CE) || now_ns <= s->timer1_last_ns) {
+    if (!(s->tmc1 & TMC1_CE) || (s->tmc1 & TMC1_ETI) ||
+        s->timer1_waiting_clear ||
+        now_ns <= s->timer1_last_ns) {
         return;
     }
 
@@ -594,24 +625,29 @@ static void v832_timer1_sync(V832PeripheralsState *s, uint64_t now_ns)
     }
 
     while (ticks--) {
-        unsigned index;
-
-        s->tm1++;
-        if (s->tm1 == 0) {
-            s->tovs |= 1u << 1;
-            if (s->tmc1 & TMC1_OVIE) {
-                v832_raise_irq(s, V832_IRQ_TIMER1);
-            }
-        }
-        for (index = 0; index < 4; index++) {
-            if ((s->tum1 & (1u << (4 + index))) &&
-                !(s->tum1 & (1u << index)) &&
-                s->tm1 == s->cc[index]) {
-                v832_raise_irq(s, v832_intp_sources[4 + index]);
-            }
-        }
+        v832_timer1_external_tick(s);
     }
     s->timer1_last_ns = now_ns;
+}
+
+static void v832_timer1_external_tick(V832PeripheralsState *s)
+{
+    unsigned index;
+
+    s->tm1++;
+    if (s->tm1 == 0) {
+        s->tovs |= 1u << 1;
+        if (s->tmc1 & TMC1_OVIE) {
+            v832_raise_irq(s, V832_IRQ_TIMER1);
+        }
+    }
+    for (index = 0; index < 4; index++) {
+        if ((s->tum1 & (1u << (4 + index))) &&
+            !(s->tum1 & (1u << index)) &&
+            s->tm1 == s->cc[index]) {
+            v832_raise_irq(s, v832_intp_sources[4 + index]);
+        }
+    }
 }
 
 static void v832_timer4_sync(V832PeripheralsState *s, uint64_t now_ns)
@@ -697,8 +733,12 @@ static void v832_timer1_schedule(V832PeripheralsState *s)
         ticks = MIN(ticks, compare_ticks);
     }
 
-    timer_mod(&s->timer1, qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL) +
-              ticks * v832_timer1_tick_ns(s));
+    if (s->tmc1 & TMC1_ETI) {
+        timer_del(&s->timer1);
+    } else {
+        timer_mod(&s->timer1, qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL) +
+                  ticks * v832_timer1_tick_ns(s));
+    }
 }
 
 static void v832_timer4_schedule(V832PeripheralsState *s)
@@ -919,6 +959,11 @@ static void v832_peripherals_write(void *opaque, hwaddr offset,
         s->tmc1 = value;
         if (!(s->tmc1 & TMC1_CE)) {
             s->tm1 = 0;
+            s->timer1_waiting_clear = false;
+            timer_del(&s->timer1);
+        } else if (s->tmc1 && (s->tum1 & TUM1_ECLR)) {
+            s->timer1_waiting_clear = true;
+            s->tm1 = 0;
             timer_del(&s->timer1);
         } else if (!timer_pending(&s->timer1)) {
             s->timer1_last_ns = qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL);
@@ -1023,6 +1068,7 @@ static void v832_peripherals_reset(DeviceState *dev)
     s->portb_input = 0;
     s->dmaak_level = 0;
     s->timer4_clear_pending = false;
+    s->timer1_waiting_clear = false;
     s->timer1_last_ns = 0;
     s->timer4_last_ns = 0;
     s->csi_bit = 0;

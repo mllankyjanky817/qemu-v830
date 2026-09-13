@@ -4,6 +4,7 @@
 #include "hw/core/sysbus.h"
 #include "target/v830/cpu.h"
 #include "qom/object.h"
+#include "qemu/timer.h"
 
 #define TYPE_V832_DMA "v832-dma"
 OBJECT_DECLARE_SIMPLE_TYPE(V832DMAState, V832_DMA)
@@ -42,8 +43,10 @@ struct V832DMAState {
 
     /* Pending UART/CSI/timer request, indexed by TTYP. */
     bool pending_internal[8];
+    bool arbitrating;
     bool nmi_level;
     uint16_t dc;
+    QEMUTimer request_timer;
 };
 
 void v832_dma_set_internal_request(V832DMAState *s, enum V832DMARequest request);

@@ -95,6 +95,7 @@ static bool v830_cpu_tlb_fill(CPUState *cs, vaddr address, int size,
 {
     bool data_ram = (address & TARGET_PAGE_MASK) == 0;
     bool instruction_ram = (address & TARGET_PAGE_MASK) == 0xfe000000u;
+    hwaddr physical_address = address;
 
     /* Internal RAM has separate instruction and data access paths. */
     if ((data_ram && access_type == MMU_INST_FETCH) ||
@@ -106,7 +107,15 @@ static bool v830_cpu_tlb_fill(CPUState *cs, vaddr address, int size,
         cpu_loop_exit_restore(cs, retaddr);
     }
 
-    tlb_set_page(cs, address & TARGET_PAGE_MASK, address & TARGET_PAGE_MASK,
+    if (mmu_idx == V830_MMU_IO &&
+        address >= V830_IO_VIRT_BASE &&
+        address < V830_IO_VIRT_BASE + V830_IO_MAP_SIZE) {
+        physical_address = V830_IO_PHYS_BASE +
+                           (address - V830_IO_VIRT_BASE);
+    }
+
+    tlb_set_page(cs, address & TARGET_PAGE_MASK,
+                 physical_address & TARGET_PAGE_MASK,
                  PAGE_READ | PAGE_WRITE | PAGE_EXEC, mmu_idx,
                  TARGET_PAGE_SIZE);
     return true;

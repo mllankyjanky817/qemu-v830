@@ -9,6 +9,9 @@
 #define V830_NUM_GPRS 32
 #define V830_CPU_IRQ_LINES 32
 #define CPU_INTERRUPT_NMI CPU_INTERRUPT_TGT_EXT_3
+#define V830_IO_VIRT_BASE  0xc0000000u
+#define V830_IO_PHYS_BASE  0xfd000000u
+#define V830_IO_MAP_SIZE   0x00002000u
 
 #define V830_PSW_Z         (1u << 0)
 #define V830_PSW_S         (1u << 1)

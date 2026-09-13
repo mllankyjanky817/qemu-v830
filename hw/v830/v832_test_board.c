@@ -335,7 +335,9 @@ static void v832_test_board_init(MachineState *machine)
 
     memory_region_init_io(&s->test_io, OBJECT(machine), &v832_test_io_ops, s,
                           "v832-test-fixture", V832_TEST_IO_SIZE);
-    memory_region_add_subregion(sysmem, V832_TEST_IO_BASE, &s->test_io);
+    memory_region_add_subregion(sysmem,
+                                V830_IO_PHYS_BASE + 0x1000,
+                                &s->test_io);
     memory_region_init_io(&s->external_io, OBJECT(machine),
                           &v832_test_external_io_ops, s,
                           "v832-test-external-io",

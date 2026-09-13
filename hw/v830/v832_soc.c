@@ -86,7 +86,7 @@ static void v832_soc_realize(DeviceState *dev, Error **errp)
 
         for (index = 0; index < ARRAY_SIZE(bcu_offsets); index++) {
             sysbus_mmio_map_overlap(SYS_BUS_DEVICE(&s->bcu), index,
-                                    V832_SOC_IO_BASE + bcu_offsets[index],
+                                    V830_IO_PHYS_BASE + bcu_offsets[index],
                                     20);
         }
     }
@@ -98,7 +98,7 @@ static void v832_soc_realize(DeviceState *dev, Error **errp)
     if (!sysbus_realize(SYS_BUS_DEVICE(&s->peripherals), errp)) {
         return;
     }
-    sysbus_mmio_map(SYS_BUS_DEVICE(&s->peripherals), 0, V832_SOC_IO_BASE);
+    sysbus_mmio_map(SYS_BUS_DEVICE(&s->peripherals), 0, V830_IO_PHYS_BASE);
     sysbus_connect_irq(SYS_BUS_DEVICE(&s->peripherals), 0,
                        qdev_get_gpio_in(DEVICE(&s->cpu), 0));
 
@@ -119,7 +119,7 @@ static void v832_soc_realize(DeviceState *dev, Error **errp)
                        qdev_get_gpio_in_named(DEVICE(&s->peripherals),
                                               "dma-irq", 0));
     sysbus_mmio_map_overlap(SYS_BUS_DEVICE(&s->dma), 0,
-                            V832_SOC_IO_BASE + 0x30, 10);
+                            V830_IO_PHYS_BASE + 0x30, 10);
 }
 
 static const Property v832_soc_properties[] = {

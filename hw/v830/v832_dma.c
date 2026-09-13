@@ -38,6 +38,10 @@ FIELD(DC, MEN,  0, 1)
 FIELD(DC, TC,   4, 4)
 FIELD(DC, TCSA, 8, 1)
 
+#define V832_DMA_TBT_MEM_MEM 0
+#define V832_DMA_TBT_MEM_IO  1
+#define V832_DMA_TBT_IO_MEM  2
+
 static bool v832_dma_valid_control(uint16_t dchc)
 {
     unsigned transfer_type = FIELD_EX16(dchc, DCHC, TTYP);
@@ -53,11 +57,46 @@ static bool v832_dma_valid_control(uint16_t dchc)
            data_size != 3;
 }
 
-static bool v832_dma_internal_address(hwaddr address)
+static bool v832_dma_io_address(hwaddr address)
+{
+    return address >= V830_IO_VIRT_BASE &&
+           address < V830_IO_VIRT_BASE + 0x400u;
+}
+
+static hwaddr v832_dma_physical_address(hwaddr address)
+{
+    if (v832_dma_io_address(address)) {
+        return V830_IO_PHYS_BASE + (address - V830_IO_VIRT_BASE);
+    }
+    return address;
+}
+
+static bool v832_dma_internal_memory(hwaddr address)
 {
     return address < 0x1000 ||
-           (address >= 0xfe000000u && address < 0xfe001000u) ||
-           (address >= 0xc0000000u && address < 0xc0000400u);
+           (address >= 0xfe000000u && address < 0xfe001000u);
+}
+
+static bool v832_dma_valid_addresses(const V832DMAChannel *channel)
+{
+    unsigned transfer_block = FIELD_EX16(channel->dchc, DCHC, TBT);
+    bool source_io = v832_dma_io_address(channel->dsa);
+    bool destination_io = v832_dma_io_address(channel->dda);
+
+    switch (transfer_block) {
+    case V832_DMA_TBT_MEM_MEM:
+        return !source_io && !destination_io &&
+               !v832_dma_internal_memory(channel->dsa) &&
+               !v832_dma_internal_memory(channel->dda);
+    case V832_DMA_TBT_MEM_IO:
+        return !source_io && !v832_dma_internal_memory(channel->dsa) &&
+               destination_io;
+    case V832_DMA_TBT_IO_MEM:
+        return source_io && !destination_io &&
+               !v832_dma_internal_memory(channel->dda);
+    default:
+        return false;
+    }
 }
 
 static unsigned v832_dma_width(const V832DMAChannel *channel)
@@ -114,21 +153,25 @@ static bool v832_dma_transfer(V832DMAState *s, V832DMAChannel *channel)
     uint8_t data[4];
     unsigned width = v832_dma_width(channel);
     bool first_transfer = channel->dbc == 0;
+    hwaddr source_address;
+    hwaddr destination_address;
 
     if (!width || !v832_dma_valid_control(channel->dchc) ||
         (!first_transfer && channel->dbc < width) ||
-        v832_dma_internal_address(channel->dsa) ||
-        v832_dma_internal_address(channel->dda)) {
+        !v832_dma_valid_addresses(channel)) {
         qemu_log_mask(LOG_GUEST_ERROR, "V832 DMA: invalid transfer configuration\n");
         return false;
     }
 
-    if (address_space_read(&address_space_memory, channel->dsa,
+    source_address = v832_dma_physical_address(channel->dsa);
+    destination_address = v832_dma_physical_address(channel->dda);
+
+    if (address_space_read(&address_space_memory, source_address,
                            MEMTXATTRS_UNSPECIFIED, data, width) != MEMTX_OK) {
         return false;
     }
 
-    if (address_space_write(&address_space_memory, channel->dda,
+    if (address_space_write(&address_space_memory, destination_address,
                             MEMTXATTRS_UNSPECIFIED, data, width) != MEMTX_OK) {
         return false;
     }
@@ -180,9 +223,11 @@ static bool v832_dma_arbitrate(V832DMAState *s)
 {
     bool transferred = false;
 
-    if (!FIELD_EX16(s->dc, DC, MEN)) {
+    if (!FIELD_EX16(s->dc, DC, MEN) || s->arbitrating) {
         return false;
     }
+
+    s->arbitrating = true;
 
     for (;;) {
         unsigned index;
@@ -220,7 +265,15 @@ static bool v832_dma_arbitrate(V832DMAState *s)
             s->pending_internal[transfer_type] = false;
         }
     }
+    s->arbitrating = false;
     return transferred;
+}
+
+static void v832_dma_request_tick(void *opaque)
+{
+    V832DMAState *s = opaque;
+
+    v832_dma_arbitrate(s);
 }
 
 void v832_dma_set_internal_request(V832DMAState *s, enum V832DMARequest request)
@@ -229,7 +282,8 @@ void v832_dma_set_internal_request(V832DMAState *s, enum V832DMARequest request)
         return;
     }
     s->pending_internal[request] = true;
-    v832_dma_arbitrate(s);
+    timer_mod(&s->request_timer,
+              qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL) + 1);
 }
 
 void v832_dma_nmi(V832DMAState *s)
@@ -352,6 +406,8 @@ static void v832_dma_reset_hold(Object *obj, ResetType type)
 
     memset(s->channel, 0, sizeof(s->channel));
     memset(s->pending_internal, 0, sizeof(s->pending_internal));
+    s->arbitrating = false;
+    timer_del(&s->request_timer);
     s->dc = 0;
     s->nmi_level = false;
 
@@ -374,6 +430,8 @@ static void v832_dma_realize(DeviceState *dev, Error **errp)
     qdev_init_gpio_in_named(dev, v832_dma_nmi_input, "nmi", 1);
     qdev_init_gpio_out_named(dev, s->dmaak, "dmaak", V832_DMA_CHANNELS);
     qdev_init_gpio_out_named(dev, &s->tc_stopak, "tc_stopak", 1);
+    timer_init_ns(&s->request_timer, QEMU_CLOCK_VIRTUAL,
+                  v832_dma_request_tick, s);
 }
 
 static void v832_dma_class_init(ObjectClass *klass, const void *data)

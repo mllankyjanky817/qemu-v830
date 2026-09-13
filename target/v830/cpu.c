@@ -161,6 +161,7 @@ void v830_cpu_do_interrupt(CPUState *cs)
     V830CPUState *env = cpu_env(cs);
     uint32_t cause;
     uint32_t handler;
+    uint32_t exception_return_pc = env->pc + 2;
 
     if (cs->exception_index == V830_EXCP_NMI) {
         if (env->psw & V830_PSW_NP) {
@@ -211,19 +212,19 @@ void v830_cpu_do_interrupt(CPUState *cs)
     }
 
     if (env->psw & V830_PSW_NP) {
-        env->dpc = env->pc;
+        env->dpc = exception_return_pc;
         env->dpsw = v830_psw_read(env);
         env->psw |= V830_PSW_DP | V830_PSW_NP | V830_PSW_EP |
                     V830_PSW_ID;
         handler = 0xffffffe0u;
     } else if (env->psw & V830_PSW_EP) {
-        env->fepc = env->pc;
+        env->fepc = exception_return_pc;
         env->fepsw = v830_psw_read(env);
         env->ecr = (env->ecr & 0xffff) | (cause << 16);
         env->psw |= V830_PSW_NP | V830_PSW_ID;
         handler = 0xffffffd0u;
     } else {
-        env->eipc = env->pc;
+        env->eipc = exception_return_pc;
         env->eipsw = v830_psw_read(env);
         env->ecr = (env->ecr & 0xffff0000) | cause;
         env->psw |= V830_PSW_EP | V830_PSW_ID;

@@ -37,6 +37,8 @@
 #define TEST_DMAAK 0x4c
 #define TEST_TC_STOPAK 0x50
 #define TEST_SSI_LAST 0x54
+#define TEST_DMAAK_COUNT 0x58
+#define TEST_DMAAK_SEQUENCE 0x5c
 
 #define TYPE_V832_TEST_SSI "v832-test-ssi"
 #define TYPE_V832_TEST_BOARD MACHINE_TYPE_NAME("v832-test-board")
@@ -69,6 +71,8 @@ struct V832TestBoardState {
     uint8_t porta_out;
     uint8_t portb_out;
     uint8_t dmaak;
+    uint8_t dmaak_sequence[4];
+    uint8_t dmaak_sequence_count;
     uint8_t tc_stopak;
     uint32_t ssi_last;
     uint32_t external_io_value;
@@ -165,6 +169,9 @@ static void v832_test_dmaak(void *opaque, int index, int level)
         s->dmaak |= BIT(index);
     } else {
         s->dmaak &= ~BIT(index);
+        if (s->dmaak_sequence_count < ARRAY_SIZE(s->dmaak_sequence)) {
+            s->dmaak_sequence[s->dmaak_sequence_count++] = index;
+        }
     }
 }
 
@@ -196,12 +203,18 @@ static uint64_t v832_test_io_read(void *opaque, hwaddr offset,
     case TEST_DMAAK: return s->dmaak;
     case TEST_TC_STOPAK: return s->tc_stopak;
     case TEST_SSI_LAST: return s->ssi_last;
+    case TEST_DMAAK_COUNT: return s->dmaak_sequence_count;
     default:
-        if (offset < TEST_INT_BASE + 8) {
-            return (s->intp >> (offset - TEST_INT_BASE)) & 1;
+        if (offset >= TEST_DMAAK_SEQUENCE &&
+            offset < TEST_DMAAK_SEQUENCE + ARRAY_SIZE(s->dmaak_sequence)) {
+            return s->dmaak_sequence[offset - TEST_DMAAK_SEQUENCE];
         }
-        return 0;
+        break;
     }
+    if (offset < TEST_INT_BASE + 8) {
+        return (s->intp >> (offset - TEST_INT_BASE)) & 1;
+    }
+    return 0;
 }
 
 static void v832_test_io_write(void *opaque, hwaddr offset,
@@ -225,6 +238,8 @@ static void v832_test_io_write(void *opaque, hwaddr offset,
     } else if (offset == TEST_NMI) {
         s->nmi = value & 1;
         qemu_set_irq(s->nmi_in, s->nmi);
+    } else if (offset == TEST_DMAAK_COUNT) {
+        s->dmaak_sequence_count = 0;
     }
 }
 

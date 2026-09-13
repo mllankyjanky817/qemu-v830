@@ -152,12 +152,13 @@ static bool v832_dma_transfer(V832DMAState *s, V832DMAChannel *channel)
 {
     uint8_t data[4];
     unsigned width = v832_dma_width(channel);
-    bool first_transfer = channel->dbc == 0;
+    bool single_transfer = !channel->transfer_started && channel->dbc == 0;
     hwaddr source_address;
     hwaddr destination_address;
 
     if (!width || !v832_dma_valid_control(channel->dchc) ||
-        (!first_transfer && channel->dbc < width) ||
+        (channel->transfer_started && channel->dbc != 0 &&
+         channel->dbc < width) ||
         !v832_dma_valid_addresses(channel)) {
         qemu_log_mask(LOG_GUEST_ERROR, "V832 DMA: invalid transfer configuration\n");
         return false;
@@ -180,11 +181,12 @@ static bool v832_dma_transfer(V832DMAState *s, V832DMAChannel *channel)
                      FIELD_EX16(channel->dchc, DCHC, SAD), width);
     v832_dma_advance(&channel->dda,
                      FIELD_EX16(channel->dchc, DCHC, DAD), width);
-    if (!first_transfer) {
+    channel->transfer_started = true;
+    if (!single_transfer) {
         channel->dbc -= width;
     }
 
-    if (first_transfer || channel->dbc == 0) {
+    if (single_transfer || channel->dbc > UINT32_MAX - width) {
         unsigned index = channel - s->channel;
 
         channel->dchc = FIELD_DP16(channel->dchc, DCHC, EN, 0);
@@ -384,6 +386,7 @@ static void v832_dma_write(void *opaque, hwaddr offset, uint64_t value, unsigned
     case REG_DBCL: channel->dbc = (channel->dbc & 0xffff0000) | (value & 0xffff); break;
     case REG_DCHC:
         channel->dchc = value;
+        channel->transfer_started = false;
         channel->software_request =
             FIELD_EX16(channel->dchc, DCHC, TTYP) ==
             V832_DMA_REQUEST_SOFTWARE;

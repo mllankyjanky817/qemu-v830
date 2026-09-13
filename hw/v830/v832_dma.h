@@ -28,6 +28,7 @@ typedef struct V832DMAChannel {
     uint16_t dchc;
     bool external_request;
     bool software_request;
+    bool transfer_started;
 } V832DMAChannel;
 
 struct V832DMAState {

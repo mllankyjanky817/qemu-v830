@@ -409,6 +409,8 @@ static void v832_csi_tick(void *opaque)
             timer_del(&s->csi_timer);
             v832_csi_raise_done(s);
         }
+    } else {
+        v832_csi_drive_falling(s);
     }
     if (!s->csi_active) {
         qemu_set_irq(s->csi_sclk_out, 0);
@@ -430,7 +432,10 @@ static void v832_csi_start(V832PeripheralsState *s)
     s->csi_active = true;
     s->csi_bit = 0;
     s->csim0 |= CSIM0_CSOT;
-    s->csi_sclk_level = 0;
+    s->csi_sclk_level = cls != 0;
+    if (cls != 0) {
+        qemu_set_irq(s->csi_sclk_out, 1);
+    }
     if (cls != 0) {
         uint8_t tx = (s->csim0 & CSIM0_CTXE) ? s->sio0 : 0;
         uint8_t rx = ssi_transfer(s->csi_bus, tx);
@@ -463,6 +468,7 @@ static void v832_uart_receive(void *opaque, const uint8_t *buf, int size)
     }
     if (s->rxb0 & 0xff) {
         s->asis0 |= ASIS0_OV;
+        v832_raise_irq(s, V832_IRQ_UART_ERR);
     }
     s->rxb0 = buf[0];
     v832_raise_irq(s, V832_IRQ_UART_RX);
@@ -773,8 +779,12 @@ static uint64_t v832_peripherals_read(void *opaque, hwaddr offset,
     case UART_ASIM00: return s->asim00;
     case UART_ASIM01: return s->asim01;
     case UART_ASIS0: return s->asis0;
-    case UART_RXB0: return s->rxb0;
-    case UART_RXB0L: return s->rxb0 & 0xff;
+    case UART_RXB0:
+        s->asis0 &= ~(ASIS0_PE | ASIS0_FE | ASIS0_OV);
+        return s->rxb0;
+    case UART_RXB0L:
+        s->asis0 &= ~(ASIS0_PE | ASIS0_FE | ASIS0_OV);
+        return s->rxb0 & 0xff;
     case UART_BRG0: return s->brg0;
     case UART_BPRM0: return s->bprm0;
     case CSI_CSIM0: return s->csim0;

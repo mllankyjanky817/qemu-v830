@@ -44,6 +44,8 @@
 #define TEST_NMI_STOPAK_ARM 0x5a
 #define TEST_DMAAK_SEQUENCE 0x5c
 #define TEST_PORTA_DMAAK_EDGES 0x60
+#define TEST_CSI_CAPTURE 0x64
+#define TEST_CSI_CAPTURE_COUNT 0x65
 
 #define TYPE_V832_TEST_SSI "v832-test-ssi"
 #define TYPE_V832_TEST_BOARD MACHINE_TYPE_NAME("v832-test-board")
@@ -85,6 +87,11 @@ struct V832TestBoardState {
     bool nmi_on_stopak;
     QEMUBH *stopak_nmi_bh;
     uint32_t ssi_last;
+    uint8_t csi_so_level;
+    uint8_t csi_sclk_level;
+    bool csi_seen_falling;
+    uint8_t csi_capture;
+    uint8_t csi_capture_count;
     uint32_t external_io_value;
     qemu_irq intp_in[8];
     qemu_irq portb_in[8];
@@ -106,6 +113,28 @@ static uint32_t v832_test_ssi_transfer(SSIPeripheral *dev, uint32_t value)
 
 static void v832_test_ssi_realize(SSIPeripheral *dev, Error **errp)
 {
+}
+
+static void v832_test_csi_so(void *opaque, int index, int level)
+{
+    V832TestBoardState *s = opaque;
+
+    s->csi_so_level = level;
+}
+
+static void v832_test_csi_sclk(void *opaque, int index, int level)
+{
+    V832TestBoardState *s = opaque;
+
+    if (!level) {
+        s->csi_seen_falling = true;
+    } else if (s->csi_seen_falling && s->csi_capture_count < 8) {
+        s->csi_capture = (uint8_t)((s->csi_capture << 1) |
+                                    (s->csi_so_level != 0));
+        s->csi_capture_count++;
+        s->csi_seen_falling = false;
+    }
+    s->csi_sclk_level = level;
 }
 
 static void v832_test_ssi_class_init(ObjectClass *klass, const void *data)
@@ -241,6 +270,8 @@ static uint64_t v832_test_io_read(void *opaque, hwaddr offset,
     case TEST_PORTA_OUT: return s->porta_out;
     case TEST_PORTB_OUT: return s->portb_out;
     case TEST_PORTA_DMAAK_EDGES: return s->porta_dmaak_edges;
+    case TEST_CSI_CAPTURE: return s->csi_capture;
+    case TEST_CSI_CAPTURE_COUNT: return s->csi_capture_count;
     case TEST_DMAAK: return s->dmaak;
     case TEST_TC_STOPAK: return s->tc_stopak;
     case TEST_TC_STOPAK_COUNT: return s->tc_stopak_count;
@@ -290,6 +321,10 @@ static void v832_test_io_write(void *opaque, hwaddr offset,
         s->tc_stopak_count = 0;
     } else if (offset == TEST_PORTA_DMAAK_EDGES) {
         s->porta_dmaak_edges = 0;
+    } else if (offset == TEST_CSI_CAPTURE) {
+        s->csi_capture = 0;
+        s->csi_capture_count = 0;
+        s->csi_seen_falling = false;
     }
 }
 
@@ -429,6 +464,10 @@ static void v832_test_board_init(MachineState *machine)
         qdev_connect_gpio_out_named(DEVICE(&s->soc.peripherals), "port-out", i,
                                     qemu_allocate_irq(v832_test_port_out, s, i));
     }
+    qdev_connect_gpio_out_named(DEVICE(&s->soc.peripherals), "sclk-out", 0,
+                                qemu_allocate_irq(v832_test_csi_sclk, s, 0));
+    qdev_connect_gpio_out_named(DEVICE(&s->soc.peripherals), "so", 0,
+                                qemu_allocate_irq(v832_test_csi_so, s, 0));
     for (unsigned i = 0; i < 8; i++) {
         qdev_connect_gpio_out_named(DEVICE(&s->soc.peripherals), "porta-out", i,
                                     qemu_allocate_irq(v832_test_porta_out, s, i));

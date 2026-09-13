@@ -131,6 +131,7 @@ static void v830_cpu_realize(DeviceState *dev, Error **errp)
         error_propagate(errp, local_err);
         return;
     }
+    qdev_init_gpio_out_named(dev, &V830_CPU(dev)->stopak, "stopak", 1);
     qemu_init_vcpu(CPU(dev));
     cpu_reset(CPU(dev));
     vcc->parent_realize(dev, errp);
@@ -152,6 +153,7 @@ static void v830_cpu_reset_hold(Object *obj, ResetType type)
     env->pc = 0xfffffff0u;
     env->interrupt_source = 0xff;
     env->nmi_level = false;
+    qemu_set_irq(V830_CPU(obj)->stopak, 0);
 }
 
 void v830_cpu_do_interrupt(CPUState *cs)
@@ -236,6 +238,10 @@ bool v830_cpu_exec_interrupt(CPUState *cs, int interrupt_request)
     unsigned source = env->interrupt_source;
     unsigned interrupt_level =
         (env->psw & V830_PSW_I_MASK) >> V830_PSW_I_SHIFT;
+
+    if (interrupt_request) {
+        qemu_set_irq(V830_CPU(cs)->stopak, 0);
+    }
 
     if ((interrupt_request & CPU_INTERRUPT_NMI) &&
         !(env->psw & V830_PSW_NP)) {

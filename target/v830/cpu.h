@@ -4,6 +4,7 @@
 #include "cpu-qom.h"
 #include "exec/cpu-common.h"
 #include "exec/cpu-interrupt.h"
+#include "hw/core/irq.h"
 
 #define CPU_RESOLVING_TYPE TYPE_V830_CPU
 #define V830_NUM_GPRS 32
@@ -85,6 +86,7 @@ static inline void v830_psw_write(V830CPUState *env, uint32_t value)
 struct ArchCPU {
     CPUState parent_obj;
     V830CPUState env;
+    qemu_irq stopak;
 };
 
 struct V830CPUClass {

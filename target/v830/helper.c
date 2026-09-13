@@ -159,7 +159,10 @@ void helper_raise_illegal_instruction(V830CPUState *env)
 void helper_wait(V830CPUState *env)
 {
     CPUState *cs = env_cpu(env);
+    V830CPU *cpu = V830_CPU(cs);
 
+    qemu_set_irq(cpu->stopak, 1);
+    env->pc += 2;
     cs->halted = 1;
     cs->exception_index = EXCP_HLT;
     cpu_loop_exit(cs);

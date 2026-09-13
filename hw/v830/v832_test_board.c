@@ -8,6 +8,7 @@
 #include "qapi/error.h"
 #include "qemu/error-report.h"
 #include "qemu/bitops.h"
+#include "qemu/main-loop.h"
 #include "system/address-spaces.h"
 #include "system/memory.h"
 #include "system/system.h"
@@ -36,8 +37,11 @@
 #define TEST_PORTB_OUT 0x48
 #define TEST_DMAAK 0x4c
 #define TEST_TC_STOPAK 0x50
+#define TEST_TC_STOPAK_COUNT 0x51
 #define TEST_SSI_LAST 0x54
 #define TEST_DMAAK_COUNT 0x58
+#define TEST_NMI_DMA_ARM 0x59
+#define TEST_NMI_STOPAK_ARM 0x5a
 #define TEST_DMAAK_SEQUENCE 0x5c
 
 #define TYPE_V832_TEST_SSI "v832-test-ssi"
@@ -73,7 +77,11 @@ struct V832TestBoardState {
     uint8_t dmaak;
     uint8_t dmaak_sequence[4];
     uint8_t dmaak_sequence_count;
+    bool nmi_on_dmaak;
     uint8_t tc_stopak;
+    uint32_t tc_stopak_count;
+    bool nmi_on_stopak;
+    QEMUBH *stopak_nmi_bh;
     uint32_t ssi_last;
     uint32_t external_io_value;
     qemu_irq intp_in[8];
@@ -173,6 +181,13 @@ static void v832_test_dmaak(void *opaque, int index, int level)
             s->dmaak_sequence[s->dmaak_sequence_count++] = index;
         }
     }
+    if (!level && s->nmi_on_dmaak) {
+        s->nmi_on_dmaak = false;
+        s->nmi = 1;
+        qemu_set_irq(s->nmi_in, 1);
+        s->nmi = 0;
+        qemu_set_irq(s->nmi_in, 0);
+    }
 }
 
 static void v832_test_tc_stopak(void *opaque, int index, int level)
@@ -181,9 +196,24 @@ static void v832_test_tc_stopak(void *opaque, int index, int level)
 
     if (level) {
         s->tc_stopak = 1;
+        s->tc_stopak_count++;
+        if (s->nmi_on_stopak) {
+            s->nmi_on_stopak = false;
+            qemu_bh_schedule(s->stopak_nmi_bh);
+        }
     } else {
         s->tc_stopak = 0;
     }
+}
+
+static void v832_test_stopak_nmi(void *opaque)
+{
+    V832TestBoardState *s = opaque;
+
+    s->nmi = 1;
+    qemu_set_irq(s->nmi_in, 1);
+    s->nmi = 0;
+    qemu_set_irq(s->nmi_in, 0);
 }
 
 static uint64_t v832_test_io_read(void *opaque, hwaddr offset,
@@ -202,6 +232,7 @@ static uint64_t v832_test_io_read(void *opaque, hwaddr offset,
     case TEST_PORTB_OUT: return s->portb_out;
     case TEST_DMAAK: return s->dmaak;
     case TEST_TC_STOPAK: return s->tc_stopak;
+    case TEST_TC_STOPAK_COUNT: return s->tc_stopak_count;
     case TEST_SSI_LAST: return s->ssi_last;
     case TEST_DMAAK_COUNT: return s->dmaak_sequence_count;
     default:
@@ -240,6 +271,12 @@ static void v832_test_io_write(void *opaque, hwaddr offset,
         qemu_set_irq(s->nmi_in, s->nmi);
     } else if (offset == TEST_DMAAK_COUNT) {
         s->dmaak_sequence_count = 0;
+    } else if (offset == TEST_NMI_DMA_ARM) {
+        s->nmi_on_dmaak = value & 1;
+    } else if (offset == TEST_NMI_STOPAK_ARM) {
+        s->nmi_on_stopak = value & 1;
+    } else if (offset == TEST_TC_STOPAK_COUNT) {
+        s->tc_stopak_count = 0;
     }
 }
 
@@ -287,6 +324,8 @@ static void v832_test_board_init(MachineState *machine)
 {
     V832TestBoardState *s = V832_TEST_BOARD(machine);
     MemoryRegion *sysmem = get_system_memory();
+
+    s->stopak_nmi_bh = qemu_bh_new(v832_test_stopak_nmi, s);
 
     if (machine->ram_size == 0 || machine->ram_size >= V832_TEST_RAM_MAX_SIZE) {
         error_report("V832 test board RAM must be less than 32 MiB");

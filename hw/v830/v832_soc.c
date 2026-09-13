@@ -106,6 +106,9 @@ static void v832_soc_realize(DeviceState *dev, Error **errp)
     if (!sysbus_realize(SYS_BUS_DEVICE(&s->dma), errp)) {
         return;
     }
+    qdev_connect_gpio_out_named(DEVICE(&s->cpu), "stopak", 0,
+                                qdev_get_gpio_in_named(
+                                    DEVICE(&s->dma), "stopak", 0));
     for (unsigned channel = 0; channel < V832_DMA_CHANNELS; channel++) {
         qdev_connect_gpio_out_named(DEVICE(&s->peripherals), "dmarq-out",
                                     channel,

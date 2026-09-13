@@ -17,7 +17,12 @@ The board reuses the V832 SoC and adds a deterministic fixture window at
 | `0x48` | read | Observe `PORTB0..PORTB7` outputs |
 | `0x4c` | read | Observe `DMAAK0..DMAAK3` |
 | `0x50` | read | Observe `TC/STOPAK` |
+| `0x51` | read/write | Read or clear `TC/STOPAK` rising-edge count |
 | `0x54` | read | Last value exchanged with the CSI SSI loopback |
+| `0x58` | read/write | Read or clear DMAAK arbitration log count |
+| `0x59` | write | Arm NMI on the next DMAAK assertion |
+| `0x5a` | write | Arm NMI when STOPAK is asserted |
+| `0x5c..0x5f` | read | DMAAK arbitration channel sequence |
 
 The board attaches an SSI loopback peripheral to CSI0. It returns each
 received word unchanged and records the last transferred value.

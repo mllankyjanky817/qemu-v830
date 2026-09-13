@@ -26,6 +26,7 @@ The board reuses the V832 SoC and adds a deterministic fixture window at
 | `0x60` | read/write | Read or clear PORTA DMAAK edge flags |
 | `0x64` | read/write | Read or clear captured CSI SO bits |
 | `0x65` | read | Number of captured CSI SO bits |
+| `0x68` | read | Observe `TO10/TO11` timer outputs |
 
 The board attaches an SSI loopback peripheral to CSI0. It returns each
 received word unchanged and records the last transferred value.

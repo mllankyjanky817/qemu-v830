@@ -46,6 +46,7 @@
 #define TEST_PORTA_DMAAK_EDGES 0x60
 #define TEST_CSI_CAPTURE 0x64
 #define TEST_CSI_CAPTURE_COUNT 0x65
+#define TEST_TIMER_OUT 0x68
 
 #define TYPE_V832_TEST_SSI "v832-test-ssi"
 #define TYPE_V832_TEST_BOARD MACHINE_TYPE_NAME("v832-test-board")
@@ -77,6 +78,7 @@ struct V832TestBoardState {
     uint8_t port_out;
     uint8_t porta_out;
     uint8_t portb_out;
+    uint8_t timer_out;
     uint8_t porta_dmaak_edges;
     uint8_t dmaak;
     uint8_t dmaak_sequence[4];
@@ -205,6 +207,17 @@ static void v832_test_portb_out(void *opaque, int index, int level)
     }
 }
 
+static void v832_test_timer_out(void *opaque, int index, int level)
+{
+    V832TestBoardState *s = opaque;
+
+    if (level) {
+        s->timer_out |= BIT(index);
+    } else {
+        s->timer_out &= ~BIT(index);
+    }
+}
+
 static void v832_test_dmaak(void *opaque, int index, int level)
 {
     V832TestBoardState *s = opaque;
@@ -269,6 +282,7 @@ static uint64_t v832_test_io_read(void *opaque, hwaddr offset,
     case TEST_PORT_OUT: return s->port_out;
     case TEST_PORTA_OUT: return s->porta_out;
     case TEST_PORTB_OUT: return s->portb_out;
+    case TEST_TIMER_OUT: return s->timer_out;
     case TEST_PORTA_DMAAK_EDGES: return s->porta_dmaak_edges;
     case TEST_CSI_CAPTURE: return s->csi_capture;
     case TEST_CSI_CAPTURE_COUNT: return s->csi_capture_count;
@@ -457,6 +471,10 @@ static void v832_test_board_init(MachineState *machine)
         if (i < 4) {
             s->dmarq_in[i] = qdev_get_gpio_in(DEVICE(&s->soc.dma), i);
         }
+    }
+    for (unsigned i = 0; i < 2; i++) {
+        qdev_connect_gpio_out_named(DEVICE(&s->soc.peripherals), "timer-out", i,
+                                    qemu_allocate_irq(v832_test_timer_out, s, i));
     }
     s->nmi_in = qdev_get_gpio_in_named(DEVICE(&s->soc), "nmi", 0);
 

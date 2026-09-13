@@ -64,6 +64,10 @@
 #define TMC1_CE    0x80
 #define TMC1_ETI   0x10
 #define TUM1_ECLR  0x1000
+#define TOC1_EN10  0x20
+#define TOC1_ALV10 0x10
+#define TOC1_EN11  0x80
+#define TOC1_ALV11 0x40
 #define TMC4_CE    0x80
 #define TMC1_OVIE  0x40
 #define CSIM0_CTXE 0x80
@@ -91,6 +95,20 @@ static const int v832_portb_intp[8] = {
 static void v832_timer1_external_tick(V832PeripheralsState *s);
 static void v832_timer1_schedule(V832PeripheralsState *s);
 static void v832_timer1_sync(V832PeripheralsState *s, uint64_t now_ns);
+
+static void v832_timer1_output_update(V832PeripheralsState *s,
+                                      unsigned output, bool active)
+{
+    unsigned enable = output ? TOC1_EN11 : TOC1_EN10;
+    unsigned active_level = output ? TOC1_ALV11 : TOC1_ALV10;
+    bool level = active ? !!(s->toc1 & active_level) :
+                          !(s->toc1 & active_level);
+
+    if (!(s->toc1 & enable) || (s->toc1 & BIT(output))) {
+        level = !(s->toc1 & active_level);
+    }
+    qemu_set_irq(s->timer_out[output], level);
+}
 
 static unsigned v832_intp_mode(const V832PeripheralsState *s, unsigned n)
 {
@@ -646,6 +664,11 @@ static void v832_timer1_external_tick(V832PeripheralsState *s)
             !(s->tum1 & (1u << index)) &&
             s->tm1 == s->cc[index]) {
             v832_raise_irq(s, v832_intp_sources[4 + index]);
+            if (index < 2) {
+                v832_timer1_output_update(s, 0, index == 0);
+            } else {
+                v832_timer1_output_update(s, 1, index == 2);
+            }
         }
     }
 }
@@ -970,7 +993,11 @@ static void v832_peripherals_write(void *opaque, hwaddr offset,
             v832_timer1_schedule(s);
         }
         return;
-    case TOC1: s->toc1 = byte; return;
+    case TOC1:
+        s->toc1 = byte;
+        v832_timer1_output_update(s, 0, false);
+        v832_timer1_output_update(s, 1, false);
+        return;
     case TM1: return;
     case CC10: case CC11: case CC12: case CC13:
         s->cc[(offset - CC10) / 2] = value;
@@ -1107,6 +1134,7 @@ static void v832_peripherals_realize(DeviceState *dev, Error **errp)
     qdev_init_gpio_out_named(dev, s->port_out, "port-out", 5);
     qdev_init_gpio_out_named(dev, s->porta_out, "porta-out", 8);
     qdev_init_gpio_out_named(dev, s->portb_out, "portb-out", 8);
+    qdev_init_gpio_out_named(dev, s->timer_out, "timer-out", 2);
     qdev_init_gpio_out_named(dev, s->dmarq_out, "dmarq-out", 4);
     qdev_init_gpio_in_named(dev, v832_csi_sclk_in, "sclk-in", 1);
     qdev_init_gpio_in_named(dev, v832_csi_si_in, "si", 1);

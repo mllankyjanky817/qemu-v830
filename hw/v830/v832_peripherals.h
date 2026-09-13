@@ -21,6 +21,7 @@ typedef struct V832PeripheralsState {
 	qemu_irq port_out[5];
 	qemu_irq porta_out[8];
 	qemu_irq portb_out[8];
+	qemu_irq timer_out[2];
 	qemu_irq dmarq_out[4];
 	SSIBus *csi_bus;
 	V830CPU *cpu;

@@ -80,7 +80,7 @@ static void v830_update_logic_flags(DisasContext *ctx, TCGv_i32 result)
     tcg_gen_movi_i32(cpu_OVF, 0);
 }
 
-static void v830_gen_add(DisasContext *ctx, TCGv_i32 t0, TCGv_i32 t1, TCGv_i32 dest)
+static void v830_gen_add(DisasContext *ctx, TCGv_i32 t0, TCGv_i32 t1, TCGv_i32 dest) //modified version of /target/arm/tcg/translate.c:485
 {
     TCGv_i32 tmp = tcg_temp_new_i32();
     tcg_gen_movi_i32(tmp, 0);
@@ -93,7 +93,7 @@ static void v830_gen_add(DisasContext *ctx, TCGv_i32 t0, TCGv_i32 t1, TCGv_i32 d
     tcg_temp_free_i32(tmp);
 }
 
-static void v830_gen_sub(DisasContext *ctx, TCGv_i32 t0, TCGv_i32 t1,
+static void v830_gen_sub(DisasContext *ctx, TCGv_i32 t0, TCGv_i32 t1, //modified version of /target/arm/tcg/translate.c:512 
                          TCGv_i32 dest, bool writeback)
 {
     TCGv_i32 tmp;
@@ -160,104 +160,56 @@ static void v830_gen_goto_tb(DisasContext *ctx, uint32_t dest)
     ctx->base.is_jmp = DISAS_NORETURN;
 }
 
-static bool trans_MOV(DisasContext *ctx, arg_MOV *a)
+static bool trans_MOV(DisasContext *ctx, arg_MOV *a) // self-explanatory.
 {
     tcg_gen_mov_i32(ctx->regs[a->dst], ctx->regs[a->src]);
     return true;
 }
 
-static bool trans_ADD(DisasContext *ctx, arg_ADD *a)
-{
+static bool trans_ADD(DisasContext *ctx, arg_ADD *a) // uses modified version of TCG for ADDS
+{                                                    // (the v800 series updates the flags for almost all instructions)
     v830_gen_add(ctx, ctx->regs[a->dst], ctx->regs[a->src],
                  ctx->regs[a->dst]);
     return true;
 }
 
-static bool trans_SUB(DisasContext *ctx, arg_SUB *a)
+static bool trans_SUB(DisasContext *ctx, arg_SUB *a) // uses modified version of TCG for SUBS
 {
     v830_gen_sub(ctx, ctx->regs[a->dst], ctx->regs[a->src],
                  ctx->regs[a->dst], true);
     return true;
 }
 
-static bool trans_CMP(DisasContext *ctx, arg_CMP *a)
+static bool trans_CMP(DisasContext *ctx, arg_CMP *a) // the gen is multi-purpose too!
 {
     v830_gen_sub(ctx, ctx->regs[a->dst], ctx->regs[a->src],
                  ctx->regs[a->dst], false);
     return true;
 }
 
-/* Helper to calculate carry flag for shifts and execute the operation */
-static void v830_gen_shift(DisasContext *ctx, int op, TCGv_i32 shift_count, TCGv_i32 reg)
-{
-    TCGv_i32 count = tcg_temp_new_i32();
-    TCGv_i32 val = tcg_temp_new_i32();
-    TCGv_i32 carry_shift = tcg_temp_new_i32();
-    TCGLabel *l_skip = gen_new_label();
-    TCGLabel *l_end = gen_new_label();
-
-    /* Mask shift count to 5 bits: count = amount & 0x1f */
-    tcg_gen_andi_i32(count, shift_count, 0x1f);
-    tcg_gen_mov_i32(val, reg);
-
-    /* A zero shift still updates the result flags and clears carry. */
-    tcg_gen_brcondi_i32(TCG_COND_EQ, count, 0, l_skip);
-
-    if (op == 0) { /* Logical Left Shift (SHL) */
-        /* carry = val >> (32 - count) & 1 */
-        tcg_gen_subfi_i32(carry_shift, 32, count);
-        tcg_gen_andi_i32(carry_shift, carry_shift, 0x1f);
-        tcg_gen_shr_i32(cpu_CYF, val, carry_shift);
-        tcg_gen_andi_i32(cpu_CYF, cpu_CYF, 1);
-        tcg_gen_shl_i32(val, val, count);
-    } else if (op == 1) { /* Logical Right Shift (SHR) */
-        /* carry = val >> (count - 1) & 1 */
-        tcg_gen_subi_i32(carry_shift, count, 1);
-        tcg_gen_andi_i32(carry_shift, carry_shift, 0x1f);
-        tcg_gen_shr_i32(cpu_CYF, val, carry_shift);
-        tcg_gen_andi_i32(cpu_CYF, cpu_CYF, 1);
-        tcg_gen_shr_i32(val, val, count);
-    } else { /* Arithmetic Right Shift (SAR) */
-        /* carry = val >> (count - 1) & 1 */
-        tcg_gen_subi_i32(carry_shift, count, 1);
-        tcg_gen_andi_i32(carry_shift, carry_shift, 0x1f);
-        tcg_gen_shr_i32(cpu_CYF, val, carry_shift);
-        tcg_gen_andi_i32(cpu_CYF, cpu_CYF, 1);
-        tcg_gen_sar_i32(val, val, count);
-    }
-
-    tcg_gen_mov_i32(reg, val);
-    v830_update_logic_flags(ctx, val); /* ZF = val, SF = val, OVF = 0 */
-    tcg_gen_br(l_end);
-
-    gen_set_label(l_skip);
-    tcg_gen_movi_i32(cpu_CYF, 0);
-    v830_update_logic_flags(ctx, val);
-    tcg_gen_movi_i32(cpu_OVF, 0);
-
-    gen_set_label(l_end);
-    tcg_temp_free_i32(count);
-    tcg_temp_free_i32(val);
-    tcg_temp_free_i32(carry_shift);
-}
-
 /* Trans functions for register-register shifts */
 
-static bool trans_SHL(DisasContext *ctx, arg_SHL *a)
+static bool trans_SHL(DisasContext *ctx, arg_SHL *a) // Also practically the same as ARM
 {
-    v830_gen_shift(ctx, 0, ctx->regs[a->src], ctx->regs[a->dst]);
+    //v830_gen_shift(ctx, 0, ctx->regs[a->src], ctx->regs[a->dst]);
+    gen_helper_shl(ctx->regs[a->dst], tcg_env, ctx->regs[a->dst], ctx->regs[a->src]);
+    v830_update_logic_flags(ctx, ctx->regs[a->dst]);
     return true;
 }
 
 static bool trans_SHR(DisasContext *ctx, arg_SHR *a)
 {
-    v830_gen_shift(ctx, 1, ctx->regs[a->src], ctx->regs[a->dst]);
+    //v830_gen_shift(ctx, 1, ctx->regs[a->src], ctx->regs[a->dst]);
+    gen_helper_shr(ctx->regs[a->dst], tcg_env, ctx->regs[a->dst], ctx->regs[a->src]);
+    v830_update_logic_flags(ctx, ctx->regs[a->dst]);
     return true;
 }
 
 static bool trans_SAR(DisasContext *ctx, arg_SAR *a)
 {
-    v830_gen_shift(ctx, 2, ctx->regs[a->src], ctx->regs[a->dst]);
+    //v830_gen_shift(ctx, 2, ctx->regs[a->src], ctx->regs[a->dst]);
+    gen_helper_sar(ctx->regs[a->dst], tcg_env, ctx->regs[a->dst], ctx->regs[a->src]);
+    v830_update_logic_flags(ctx, ctx->regs[a->dst]);
     return true;
 }
 
@@ -265,19 +217,25 @@ static bool trans_SAR(DisasContext *ctx, arg_SAR *a)
 
 static bool trans_SHLI5(DisasContext *ctx, arg_SHLI5 *a)
 {
-    v830_gen_shift(ctx, 0, tcg_constant_i32(a->imm), ctx->regs[a->dst]);
+    //v830_gen_shift(ctx, 0, tcg_constant_i32(a->imm), ctx->regs[a->dst]);
+    gen_helper_shl(ctx->regs[a->dst], tcg_env, ctx->regs[a->dst], tcg_constant_i32(a->imm));
+    v830_update_logic_flags(ctx, ctx->regs[a->dst]);
     return true;
 }
 
 static bool trans_SHRI5(DisasContext *ctx, arg_SHRI5 *a)
 {
-    v830_gen_shift(ctx, 1, tcg_constant_i32(a->imm), ctx->regs[a->dst]);
+    //v830_gen_shift(ctx, 1, tcg_constant_i32(a->imm), ctx->regs[a->dst]);
+    gen_helper_shr(ctx->regs[a->dst], tcg_env, ctx->regs[a->dst], tcg_constant_i32(a->imm));
+    v830_update_logic_flags(ctx, ctx->regs[a->dst]);
     return true;
 }
 
 static bool trans_SARI5(DisasContext *ctx, arg_SARI5 *a)
 {
-    v830_gen_shift(ctx, 2, tcg_constant_i32(a->imm), ctx->regs[a->dst]);
+    //v830_gen_shift(ctx, 2, tcg_constant_i32(a->imm), ctx->regs[a->dst]);
+    gen_helper_sar(ctx->regs[a->dst], tcg_env, ctx->regs[a->dst], tcg_constant_i32(a->imm));
+    v830_update_logic_flags(ctx, ctx->regs[a->dst]);
     return true;
 }
 

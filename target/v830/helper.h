@@ -1,5 +1,8 @@
 DEF_HELPER_1(raise_illegal_instruction, noreturn, env)
 DEF_HELPER_1(wait, noreturn, env)
+DEF_HELPER_3(shl, i32, env, i32, i32)
+DEF_HELPER_3(shr, i32, env, i32, i32)
+DEF_HELPER_3(sar, i32, env, i32, i32)
 DEF_HELPER_1(divide_error, noreturn, env)
 DEF_HELPER_3(saturate, i32, env, i64, i32)
 DEF_HELPER_3(add_saturate, i32, env, i32, i32)

@@ -104,6 +104,52 @@ void helper_divu(V830CPUState *env, uint32_t src, uint32_t dst)
     update_sz(env, env->regs[dst]);
 }
 
+uint32_t helper_shl(V830CPUState *env, uint32_t x, uint32_t i) // From /target/arm/tcg/op_helper.c:1429
+{
+    int shift = i & 0x1f;
+    if (shift >= 32) {
+        if (shift == 32)
+            env->cyf = x & 1;
+        else
+            env->cyf = 0;
+        return 0;
+    } else if (shift != 0) {
+        env->cyf = (x >> (32 - shift)) & 1;
+        return x << shift;
+    }
+    return x;
+}
+
+uint32_t helper_shr(V830CPUState *env, uint32_t x, uint32_t i) // From /target/arm/tcg/op_helper.c:1445
+{
+    int shift = i & 0x1f;
+    if (shift >= 32) {
+        if (shift == 32)
+            env->cyf = (x >> 31) & 1;
+        else
+            env->cyf = 0;
+        return 0;
+    } else if (shift != 0) {
+        env->cyf = (x >> (shift - 1)) & 1;
+        return x >> shift;
+    }
+    return x;
+}
+
+uint32_t helper_sar(V830CPUState *env, uint32_t x, uint32_t i) // From /target/arm/tcg/op_helper.c:1461
+{
+    int shift = i & 0x1f;
+    if (shift >= 32) {
+        env->cyf = (x >> 31) & 1;
+        return (int32_t)x >> 31;
+    } else if (shift != 0) {
+        env->cyf = (x >> (shift - 1)) & 1;
+        return (int32_t)x >> shift;
+    }
+    return x;
+}
+
+
 void helper_ldsr(V830CPUState *env, uint32_t value, uint32_t regid)
 {
     switch (regid) {

@@ -12,9 +12,6 @@
 #define TYPE_V832_SOC "v832-soc"
 
 #define V832_SOC_IO_BASE V830_IO_VIRT_BASE
-#define V832_SOC_INTERNAL_RAM_SIZE 0x1000
-#define V832_SOC_INTERNAL_DATA_RAM_BASE 0x00000000
-#define V832_SOC_INTERNAL_INSN_RAM_BASE 0xfe000000
 
 typedef struct V832SoCState {
     SysBusDevice parent_obj;

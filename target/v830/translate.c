@@ -45,7 +45,7 @@ void v830_translate_init(void)
     }
     cpu_psw = tcg_global_mem_new_i32(tcg_env, offsetof(V830CPUState, psw),
                                      "psw");
-    cpu_ZF = tcg_global_mem_new_i32(tcg_env, offsetof(V830CPUState, zf), "ZF");
+    cpu_ZF = tcg_global_mem_new_i32(tcg_env, offsetof(V830CPUState, zf), "ZF"); //lazy flags
     cpu_SF = tcg_global_mem_new_i32(tcg_env, offsetof(V830CPUState, sf), "SF");
     cpu_OVF = tcg_global_mem_new_i32(tcg_env, offsetof(V830CPUState, ovf), "OVF");
     cpu_CYF = tcg_global_mem_new_i32(tcg_env, offsetof(V830CPUState, cyf), "CYF");
@@ -402,7 +402,7 @@ static bool trans_ADDI5(DisasContext *ctx, arg_ADDI5 *a)
 }
 
 /* Inline condition evaluation to avoid helper call overhead */
-static TCGv_i32 v830_gen_condition(DisasContext *ctx, int cond)
+static inline TCGv_i32 v830_gen_condition(DisasContext *ctx, int cond)
 {
     TCGv_i32 result = tcg_temp_new_i32();
     TCGv_i32 cy = tcg_temp_new_i32();

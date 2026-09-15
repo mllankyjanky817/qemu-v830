@@ -57,16 +57,16 @@ static void v832_soc_realize(DeviceState *dev, Error **errp)
 
     memory_region_init_ram(&s->internal_data_ram, NULL,
                            "v832-internal-data-ram",
-                           V832_SOC_INTERNAL_RAM_SIZE, &error_fatal);
+                           V830_INTERNAL_RAM_SIZE, &error_fatal);
     memory_region_add_subregion_overlap(sysmem,
-                                        V832_SOC_INTERNAL_DATA_RAM_BASE,
+                                        V830_INTERNAL_DATA_RAM_BASE,
                                         &s->internal_data_ram, 10);
 
     memory_region_init_ram(&s->internal_insn_ram, NULL,
                            "v832-internal-instruction-ram",
-                           V832_SOC_INTERNAL_RAM_SIZE, &error_fatal);
+                           V830_INTERNAL_RAM_SIZE, &error_fatal);
     memory_region_add_subregion_overlap(sysmem,
-                                        V832_SOC_INTERNAL_INSN_RAM_BASE,
+                                        V830_INTERNAL_INSN_RAM_BASE,
                                         &s->internal_insn_ram, 10);
 
     qdev_realize(DEVICE(&s->cpu), NULL, errp);

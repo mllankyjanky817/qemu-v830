@@ -10,17 +10,21 @@
 #define V830_NUM_GPRS 32
 #define V830_CPU_IRQ_LINES 32
 #define CPU_INTERRUPT_NMI CPU_INTERRUPT_TGT_EXT_3
-#define V830_IO_VIRT_BASE  0xc0000000u
+#define V830_IO_VIRT_BASE  0xc0000000u // internal I/O register
 #define V830_IO_PHYS_BASE  0xfd000000u
-#define V830_IO_MAP_SIZE   0x00002000u
-
-#define V830_PSW_Z         (1u << 0)
+#define V830_IO_MAP_SIZE   0x00002000u // 7 kiB larger than the actual I/O register size 
+//to map diagnostic registers implemented in test_board only, which v832-marathon uses.
+//By default, the peripheral I/O register area is 0x400 bytes long.
+#define V830_INTERNAL_RAM_SIZE      0x1000u
+#define V830_INTERNAL_DATA_RAM_BASE 0x00000000u
+#define V830_INTERNAL_INSN_RAM_BASE 0xfe000000u
+#define V830_PSW_Z         (1u << 0) // fun with flags
 #define V830_PSW_S         (1u << 1)
 #define V830_PSW_OV        (1u << 2)
 #define V830_PSW_CY        (1u << 3)
 #define V830_PSW_FLAG_MASK (V830_PSW_Z | V830_PSW_S | V830_PSW_OV | \
                             V830_PSW_CY)
-#define V830_PSW_SAT       (1u << 10)
+#define V830_PSW_SAT       (1u << 10) // saturation, which is not implemented as a lazy flag; wouldn't be a bad idea to, though.
 #define V830_PSW_ID        (1u << 12)
 #define V830_PSW_DP        (1u << 11)
 #define V830_PSW_EP        (1u << 14)
@@ -41,8 +45,8 @@ enum V830MMUIndex {
     V830_MMU_INTERNAL,
 };
 
-/* The V830 family is a 32-bit little-endian architecture. */
-typedef struct CPUArchState {
+
+typedef struct CPUArchState { // all the registers, lazy flags, and interrupt stuff.
     uint32_t regs[V830_NUM_GPRS];
     uint32_t pc;
     uint32_t zf;
@@ -65,7 +69,7 @@ typedef struct CPUArchState {
     bool nmi_level;
 } V830CPUState;
 
-static inline uint32_t v830_psw_read(const V830CPUState *env)
+static inline uint32_t v830_psw_read(const V830CPUState *env) // pack up the lazy flags into a proper PSW
 {
     return (env->psw & ~V830_PSW_FLAG_MASK) |
             (env->zf == 0 ? V830_PSW_Z : 0) |
@@ -74,7 +78,7 @@ static inline uint32_t v830_psw_read(const V830CPUState *env)
             (env->cyf ? V830_PSW_CY : 0);
 }
 
-static inline void v830_psw_write(V830CPUState *env, uint32_t value)
+static inline void v830_psw_write(V830CPUState *env, uint32_t value) // unpack the PSW into lazy flags and keep the rest.
 {
     env->zf = (value & V830_PSW_Z) ? 0 : 1;
     env->sf = (value & V830_PSW_S) ? (1u << 31) : 0;
@@ -93,9 +97,12 @@ struct V830CPUClass {
     CPUClass parent_class;
     DeviceRealize parent_realize;
     ResettablePhases parent_phases;
+    uint32_t pir;
 };
 
-void v830_cpu_do_interrupt(CPUState *cs);
+
+// prototypes
+void v830_cpu_do_interrupt(CPUState *cs); 
 bool v830_cpu_exec_interrupt(CPUState *cs, int interrupt_request);
 void v830_cpu_set_interrupt_source(V830CPU *cpu, unsigned source);
 void v830_cpu_dump_state(CPUState *cs, FILE *f, int flags);

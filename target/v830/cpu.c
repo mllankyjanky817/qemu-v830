@@ -9,7 +9,7 @@
 #include "exec/translation-block.h"
 #include "accel/tcg/cpu-ops.h"
 
-static void v830_cpu_set_pc(CPUState *cs, vaddr value)
+static void v830_cpu_set_pc(CPUState *cs, vaddr value) //self-explanatory one-liners. Roles are explained down at v830_cpu_class_init()
 {
     cpu_env(cs)->pc = value;
 }
@@ -89,7 +89,7 @@ static hwaddr v830_cpu_get_phys_addr_debug(CPUState *cs, vaddr addr)
     return addr;
 }
 
-static bool v830_cpu_tlb_fill(CPUState *cs, vaddr address, int size,
+static bool v830_cpu_tlb_fill(CPUState *cs, vaddr address, int size, // TLB miss handling. Happens when a virtual address isn't mapped in the TLB.
                               MMUAccessType access_type, int mmu_idx,
                               bool probe, uintptr_t retaddr)
 {
@@ -121,7 +121,7 @@ static bool v830_cpu_tlb_fill(CPUState *cs, vaddr address, int size,
     return true;
 }
 
-static void v830_cpu_realize(DeviceState *dev, Error **errp)
+static void v830_cpu_realize(DeviceState *dev, Error **errp) // finalize CPU object config and instantiate it.
 {
     V830CPUClass *vcc = V830_CPU_GET_CLASS(dev);
     Error *local_err = NULL;
@@ -137,7 +137,7 @@ static void v830_cpu_realize(DeviceState *dev, Error **errp)
     vcc->parent_realize(dev, errp);
 }
 
-static void v830_cpu_reset_hold(Object *obj, ResetType type)
+static void v830_cpu_reset_hold(Object *obj, ResetType type) // CPU's reset state.
 {
     V830CPUClass *vcc = V830_CPU_GET_CLASS(obj);
     V830CPUState *env = cpu_env(CPU(obj));
@@ -148,8 +148,9 @@ static void v830_cpu_reset_hold(Object *obj, ResetType type)
     memset(env, 0, offsetof(V830CPUState, exception_index));
     v830_psw_write(env, V830_PSW_NP);
     env->ecr = 0x0000fff0;
-    env->pir = 0x00008302;
-    env->tkcw = 0x000000e0;
+    env->pir = vcc->pir;
+    env->tkcw = 0x000000e0; // Leftover from V810; used to be used for controlling
+    // floating-point operation. Now, it's read-only.
     env->pc = 0xfffffff0u;
     env->interrupt_source = 0xff;
     env->nmi_level = false;
@@ -157,6 +158,10 @@ static void v830_cpu_reset_hold(Object *obj, ResetType type)
 }
 
 void v830_cpu_do_interrupt(CPUState *cs)
+/*handle interrupts which aren't masked out by PSW. 
+Determine which exception vector to jump to (considering HCCW.IHA), and
+set PSW, ECR.
+*/
 {
     V830CPUState *env = cpu_env(cs);
     uint32_t cause;
@@ -167,7 +172,7 @@ void v830_cpu_do_interrupt(CPUState *cs)
         if (env->psw & V830_PSW_NP) {
             return;
         }
-        cpu_reset_interrupt(cs, CPU_INTERRUPT_NMI);
+        cpu_reset_interrupt(cs, CPU_INTERRUPT_NMI); // NMI
         env->fepc = env->pc;
         env->fepsw = v830_psw_read(env);
         env->ecr = (env->ecr & 0xffffu) | (0xffd0u << 16);
@@ -198,7 +203,7 @@ void v830_cpu_do_interrupt(CPUState *cs)
         return;
     }
 
-    switch (cs->exception_index) {
+    switch (cs->exception_index) { //self-explanatory
     case V830_EXCP_ILLEGAL:
         cause = 0xff90;
         handler = 0xffffff90u;
@@ -211,20 +216,20 @@ void v830_cpu_do_interrupt(CPUState *cs)
         return;
     }
 
-    if (env->psw & V830_PSW_NP) {
+    if (env->psw & V830_PSW_NP) {// fatal exception
         env->dpc = exception_return_pc;
         env->dpsw = v830_psw_read(env);
         env->psw |= V830_PSW_DP | V830_PSW_NP | V830_PSW_EP |
                     V830_PSW_ID;
         handler = 0xffffffe0u;
-    } else if (env->psw & V830_PSW_EP) {
+    } else if (env->psw & V830_PSW_EP) { // double exception; also goes to NMI handler.
         env->fepc = exception_return_pc;
         env->fepsw = v830_psw_read(env);
         env->ecr = (env->ecr & 0xffff) | (cause << 16);
         env->psw |= V830_PSW_NP | V830_PSW_ID;
         handler = 0xffffffd0u;
     } else {
-        env->eipc = exception_return_pc;
+        env->eipc = exception_return_pc; // maskable interrupt
         env->eipsw = v830_psw_read(env);
         env->ecr = (env->ecr & 0xffff0000) | cause;
         env->psw |= V830_PSW_EP | V830_PSW_ID;
@@ -241,17 +246,17 @@ bool v830_cpu_exec_interrupt(CPUState *cs, int interrupt_request)
         (env->psw & V830_PSW_I_MASK) >> V830_PSW_I_SHIFT;
 
     if (interrupt_request) {
-        qemu_set_irq(V830_CPU(cs)->stopak, 0);
+        qemu_set_irq(V830_CPU(cs)->stopak, 0); //maskable
     }
 
-    if ((interrupt_request & CPU_INTERRUPT_NMI) &&
+    if ((interrupt_request & CPU_INTERRUPT_NMI) && //non-maskable or exception
         !(env->psw & V830_PSW_NP)) {
         cs->exception_index = V830_EXCP_NMI;
         v830_cpu_do_interrupt(cs);
         return true;
     }
 
-    if ((interrupt_request & CPU_INTERRUPT_HARD) &&
+    if ((interrupt_request & CPU_INTERRUPT_HARD) && // external hardware
         !(env->psw & (V830_PSW_NP | V830_PSW_EP | V830_PSW_ID)) &&
         source < 16 && source >= interrupt_level) {
         cs->exception_index = V830_EXCP_INTERRUPT;
@@ -287,26 +292,26 @@ static const struct SysemuCPUOps v830_sysemu_ops = {
     .get_phys_addr_debug = v830_cpu_get_phys_addr_debug,
 };
 
-static const TCGCPUOps v830_tcg_ops = {
-    .guest_default_memory_order = TCG_MO_ALL,
-    .mttcg_supported = false,
-    .initialize = v830_translate_init,
-    .translate_code = v830_translate_code,
-    .get_tb_cpu_state = v830_get_tb_cpu_state,
-    .synchronize_from_tb = v830_cpu_synchronize_from_tb,
-    .restore_state_to_opc = v830_restore_state_to_opc,
-    .mmu_index = v830_cpu_mmu_index,
-    .tlb_fill = v830_cpu_tlb_fill,
-    .pointer_wrap = cpu_pointer_wrap_uint32,
-    .cpu_exec_interrupt = v830_cpu_exec_interrupt,
-    .cpu_exec_halt = v830_cpu_has_work,
-    .cpu_exec_reset = cpu_reset,
-    .do_interrupt = v830_cpu_do_interrupt,
+static const TCGCPUOps v830_tcg_ops = { // target op definition.
+    .guest_default_memory_order = TCG_MO_ALL, // reads and writes are not reordered and must complete before next instruction
+    .mttcg_supported = false, // not multi-core
+    .initialize = v830_translate_init, // Initialize TCG state with registers and lazy flags
+    .translate_code = v830_translate_code, // get the translator loop going.
+    .get_tb_cpu_state = v830_get_tb_cpu_state, // get pc, psw, and flags at current translation block (TB)
+    .synchronize_from_tb = v830_cpu_synchronize_from_tb, // sync guest pc to TB's pc.
+    .restore_state_to_opc = v830_restore_state_to_opc, // unwind and restore cpu state at interrupt or exception
+    .mmu_index = v830_cpu_mmu_index, // select between internal and data MMU index for mem access
+    .tlb_fill = v830_cpu_tlb_fill, //virtual to physical address wiring; sets up internal D-RAM and I-RAM offsets.
+    .pointer_wrap = cpu_pointer_wrap_uint32, // address space wrapping.
+    .cpu_exec_interrupt = v830_cpu_exec_interrupt, //interrupt handling for NMI/exceptions
+    .cpu_exec_halt = v830_cpu_has_work, //does the cpu have work to do (not HALTed)? Does it have to wake up (NMI/exceptions/ints)?
+    .cpu_exec_reset = cpu_reset, //reset the cpu to initial state
+    .do_interrupt = v830_cpu_do_interrupt, //handle interrupts which aren't masked out by PSW. Determine which exception vector to jump to (considering HCCW.IHA) and set up PSW ECR.
 };
 
 static void v830_cpu_init(Object *obj)
 {
-    qdev_init_gpio_in(DEVICE(obj), v830_cpu_set_irq, V830_CPU_IRQ_LINES);
+    qdev_init_gpio_in(DEVICE(obj), v830_cpu_set_irq, V830_CPU_IRQ_LINES); // init interrupt lines.
     qdev_init_gpio_in_named(DEVICE(obj), v830_cpu_set_nmi, "nmi", 1);
 }
 
@@ -321,35 +326,44 @@ static void v830_cpu_class_init(ObjectClass *oc, const void *data)
     resettable_class_set_parent_phases(rc, NULL, v830_cpu_reset_hold, NULL,
                                        &vcc->parent_phases);
     cc->class_by_name = v830_cpu_class_by_name;
-    cc->set_pc = v830_cpu_set_pc;
-    cc->get_pc = v830_cpu_get_pc;
-    cc->dump_state = v830_cpu_dump_state;
-    cc->gdb_arch_name = v830_gdb_arch_name;
-    cc->gdb_read_register = v830_cpu_gdb_read_register;
-    cc->gdb_write_register = v830_cpu_gdb_write_register;
-    cc->gdb_core_xml_file = "v830-cpu.xml";
-    cc->sysemu_ops = &v830_sysemu_ops;
-    cc->tcg_ops = &v830_tcg_ops;
+    cc->set_pc = v830_cpu_set_pc; // sets the PC in V830CPUState.
+    cc->get_pc = v830_cpu_get_pc; // returns the PC from V830CPUState.
+    cc->dump_state = v830_cpu_dump_state; // prints out the GPRs, PC, and PSW to the console.
+    cc->gdb_arch_name = v830_gdb_arch_name; // is broadcasted to gdb, or gdb-compatible client to get the architecture name.
+    cc->gdb_read_register = v830_cpu_gdb_read_register; // switch statement to read GPRs or Special registers.
+    cc->gdb_write_register = v830_cpu_gdb_write_register; // .. .. .. write .. .. .. ..
+    cc->gdb_core_xml_file = "v830-cpu.xml"; // names and groups of registers broadcasted to gdb client.
+    cc->sysemu_ops = &v830_sysemu_ops; // used by TCG to determine if the CPU has work to do, and to get the physical address of a virtual address for debugging.
+    cc->tcg_ops = &v830_tcg_ops; // used by TCG to initialize the CPU state, translate, get TB state, sync, etc.
 }
 
-#define DEFINE_V830_CPU_TYPE(type_name) \
-    { .name = type_name, .parent = TYPE_V830_CPU }
+static void v830_cpu_model_class_init(ObjectClass *oc, const void *data)
+{
+    V830CPUClass *vcc = V830_CPU_CLASS(oc);
 
-static const TypeInfo v830_cpu_types[] = {
-    {
+    vcc->pir = (uintptr_t)data;
+}
+
+#define DEFINE_V830_CPU_MODEL(type_name, pir_value) \
+        { .name = type_name, .parent = TYPE_V830_CPU, \
+            .class_init = v830_cpu_model_class_init, \
+            .class_data = (void *)(uintptr_t)(pir_value) }
+
+static const TypeInfo v830_cpu_types[] = { // OOP in C??? Wow, nice QOM!
+    { // This declares the base V830 CPU type, which is abstract and cannot be instantiated directly.
         .name = TYPE_V830_CPU,
         .parent = TYPE_CPU,
-        .instance_size = sizeof(V830CPU),
+        .instance_size = sizeof(V830CPU), // The V830CPU object, which contains a CPUState and a V830CPUState.
         .instance_align = __alignof(V830CPU),
         .instance_init = v830_cpu_init,
-        .abstract = true,
+        .abstract = true, // can only be instantiated by subclasses and not directly.
         .class_size = sizeof(V830CPUClass),
-        .class_init = v830_cpu_class_init,
+        .class_init = v830_cpu_class_init, // This is what's used to instantiate V830CPUClass, a subclass of CPUClass. 
     },
-    DEFINE_V830_CPU_TYPE("v830-v830-cpu"),
-    DEFINE_V830_CPU_TYPE("v831-v830-cpu"),
-    DEFINE_V830_CPU_TYPE("v832-v830-cpu"),
-    DEFINE_V830_CPU_TYPE("v833-v830-cpu"),
+    DEFINE_V830_CPU_MODEL("v830-v830-cpu", 0x00008300), // contains the PIR value per model.
+    DEFINE_V830_CPU_MODEL("v831-v830-cpu", 0x00008301),
+    DEFINE_V830_CPU_MODEL("v832-v830-cpu", 0x00008302),
+    DEFINE_V830_CPU_MODEL("v833-v830-cpu", 0x00008303),
 };
 
 DEFINE_TYPES(v830_cpu_types)

@@ -4,9 +4,9 @@
 #include "accel/tcg/cpu-loop.h"
 #include "accel/tcg/cpu-ldst.h"
 
-static void update_sz(V830CPUState *env, uint32_t result)
+static inline void update_sz(V830CPUState *env, uint32_t result)
 {
-    env->zf = result;
+    env->zf = result; // lazy flags!!!
     env->sf = result;
 }
 
@@ -15,14 +15,14 @@ uint32_t helper_saturate(V830CPUState *env, uint64_t result, uint32_t set_flags)
     int64_t signed_result = result;
 
     if (signed_result > INT32_MAX) {
-        env->psw |= V830_PSW_SAT;
+        env->satf = 1;
         if (set_flags) {
             update_sz(env, INT32_MAX);
         }
         return INT32_MAX;
     }
     if (signed_result < INT32_MIN) {
-        env->psw |= V830_PSW_SAT;
+        env->satf = 1;
         if (set_flags) {
             update_sz(env, INT32_MIN);
         }
@@ -33,6 +33,41 @@ uint32_t helper_saturate(V830CPUState *env, uint64_t result, uint32_t set_flags)
     }
     return signed_result;
 }
+
+uint32_t helper_add_saturate(V830CPUState *env, uint32_t a, uint32_t b)// modified from ARM op_helper.c
+{
+    env->ovf = 0;
+    uint64_t res = (uint64_t)a + (uint64_t)b;
+    env->cyf = res >> 32;
+
+    if ((int32_t)((a ^ res) & ~(a ^ b)) < 0) {
+        env->satf = 1;
+        env->ovf = -1;
+        res = (int32_t)a >> 31 ^ 0x7FFFFFFF;
+        env->cyf = res >> 31;
+    }
+
+    env->zf = env->sf = (uint32_t)res;
+    return (uint32_t)res;
+}
+
+uint32_t helper_sub_saturate(V830CPUState *env, uint32_t a, uint32_t b)// ditto
+{
+    env->ovf = 0;
+    uint64_t res = (uint64_t)a - (uint64_t)b;
+    env->cyf = (res >> 32);
+
+    if ((int32_t)((a ^ b) & (a ^ res)) < 0) {
+        env->satf = 1;
+        env->ovf = -1;
+        res = (int32_t)a >> 31 ^ 0x7FFFFFFF;
+        env->cyf = ~(res >> 31);
+    }
+
+    env->zf = env->sf = (uint32_t)res;
+    return (uint32_t)res;
+}
+
 
 void helper_divide_error(V830CPUState *env)
 {

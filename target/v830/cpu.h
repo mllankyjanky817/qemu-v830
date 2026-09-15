@@ -22,9 +22,9 @@
 #define V830_PSW_S         (1u << 1)
 #define V830_PSW_OV        (1u << 2)
 #define V830_PSW_CY        (1u << 3)
+#define V830_PSW_SAT       (1u << 10)
 #define V830_PSW_FLAG_MASK (V830_PSW_Z | V830_PSW_S | V830_PSW_OV | \
-                            V830_PSW_CY)
-#define V830_PSW_SAT       (1u << 10) // saturation, which is not implemented as a lazy flag; wouldn't be a bad idea to, though.
+                            V830_PSW_CY | V830_PSW_SAT)
 #define V830_PSW_ID        (1u << 12)
 #define V830_PSW_DP        (1u << 11)
 #define V830_PSW_EP        (1u << 14)
@@ -53,6 +53,7 @@ typedef struct CPUArchState { // all the registers, lazy flags, and interrupt st
     uint32_t sf;
     uint32_t ovf;
     uint32_t cyf;
+    uint32_t satf;
     uint32_t psw;
     uint32_t eipc;
     uint8_t interrupt_source;
@@ -75,7 +76,8 @@ static inline uint32_t v830_psw_read(const V830CPUState *env) // pack up the laz
             (env->zf == 0 ? V830_PSW_Z : 0) |
             ((env->sf >> 31) ? V830_PSW_S : 0) |
             ((env->ovf >> 31) ? V830_PSW_OV : 0) |
-            (env->cyf ? V830_PSW_CY : 0);
+            (env->cyf ? V830_PSW_CY : 0) |
+            (env->satf ? V830_PSW_SAT : 0);
 }
 
 static inline void v830_psw_write(V830CPUState *env, uint32_t value) // unpack the PSW into lazy flags and keep the rest.
@@ -84,6 +86,7 @@ static inline void v830_psw_write(V830CPUState *env, uint32_t value) // unpack t
     env->sf = (value & V830_PSW_S) ? (1u << 31) : 0;
     env->ovf = (value & V830_PSW_OV) ? (1u << 31) : 0;
     env->cyf = !!(value & V830_PSW_CY);
+    env->satf = !!(value & V830_PSW_SAT);
     env->psw = value & ~V830_PSW_FLAG_MASK;
 }
 

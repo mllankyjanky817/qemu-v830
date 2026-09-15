@@ -27,7 +27,7 @@ bool decode_insn32(DisasContext *ctx, uint32_t insn);
 static TCGv_i32 cpu_pc;
 static TCGv_i32 cpu_regs[V830_NUM_GPRS];
 static TCGv_i32 cpu_psw;
-static TCGv_i32 cpu_ZF, cpu_SF, cpu_OVF, cpu_CYF;
+static TCGv_i32 cpu_ZF, cpu_SF, cpu_OVF, cpu_CYF, cpu_SATF;
 
 void v830_translate_init(void)
 {
@@ -49,6 +49,7 @@ void v830_translate_init(void)
     cpu_SF = tcg_global_mem_new_i32(tcg_env, offsetof(V830CPUState, sf), "SF");
     cpu_OVF = tcg_global_mem_new_i32(tcg_env, offsetof(V830CPUState, ovf), "OVF");
     cpu_CYF = tcg_global_mem_new_i32(tcg_env, offsetof(V830CPUState, cyf), "CYF");
+    cpu_SATF = tcg_global_mem_new_i32(tcg_env, offsetof(V830CPUState, satf), "SATF");
 }
 
 static void v830_tr_init(DisasContextBase *db, CPUState *cs)
@@ -644,8 +645,7 @@ static TCGv_i32 v830_gen_saturate_i64(DisasContext *ctx, TCGv_i64 res64)
     tcg_gen_setcondi_i64(TCG_COND_LT, below_min, res64, INT32_MIN);
     tcg_gen_or_i64(out_of_range, above_max, below_min);
     tcg_gen_extrl_i64_i32(sat_mask, out_of_range);
-    tcg_gen_shli_i32(sat_mask, sat_mask, ctz32(V830_PSW_SAT));
-    tcg_gen_or_i32(ctx->psw, ctx->psw, sat_mask);
+    tcg_gen_or_i32(cpu_SATF, cpu_SATF, sat_mask);
 
     /* Clamp 64-bit result to signed 32-bit limits: [INT32_MIN, INT32_MAX] */
     tcg_gen_smin_i64(clamped, res64, tcg_constant_i64(INT32_MAX));
@@ -756,8 +756,7 @@ static TCGv_i32 v830_gen_clamp_sat_i64(DisasContext *ctx, TCGv_i64 res64)
     tcg_gen_or_i64(out_of_range, out_of_range, below_range);
 
     tcg_gen_extrl_i64_i32(sat_mask, out_of_range);
-    tcg_gen_shli_i32(sat_mask, sat_mask, ctz32(V830_PSW_SAT));
-    tcg_gen_or_i32(ctx->psw, ctx->psw, sat_mask);
+    tcg_gen_or_i32(cpu_SATF, cpu_SATF, sat_mask);
 
     /* 2. Clamp 64-bit value to signed 32-bit limits */
     tcg_gen_smin_i64(res64, res64, tcg_constant_i64(INT32_MAX));
@@ -769,37 +768,6 @@ static TCGv_i32 v830_gen_clamp_sat_i64(DisasContext *ctx, TCGv_i64 res64)
     tcg_temp_free_i32(sat_mask);
 
     return res32;
-}
-
-static void v830_gen_sat_addsub3(DisasContext *ctx, int r1, int r2, int dst, bool is_sub)
-{
-    TCGv_i64 left = tcg_temp_new_i64();
-    TCGv_i64 right = tcg_temp_new_i64();
-    TCGv_i64 res64 = tcg_temp_new_i64();
-    TCGv_i32 res32;
-
-    tcg_gen_ext_i32_i64(left, ctx->regs[r1]);
-    tcg_gen_ext_i32_i64(right, ctx->regs[r2]);
-
-    if (is_sub) {
-        tcg_gen_sub_i64(res64, right, left);
-        v830_gen_sub(ctx, ctx->regs[r2], ctx->regs[r1], ctx->regs[dst], false);
-    } else {
-        tcg_gen_add_i64(res64, left, right);
-        v830_gen_add(ctx, ctx->regs[r1], ctx->regs[r2], ctx->regs[dst]);
-    }
-
-    /* Clamp result and set PSW.SAT */
-    res32 = v830_gen_clamp_sat_i64(ctx, res64);
-    tcg_gen_mov_i32(ctx->regs[dst], res32);
-
-    /* Update Zero and Sign flags based on the final saturated result */
-    tcg_gen_mov_i32(cpu_ZF, res32);
-    tcg_gen_mov_i32(cpu_SF, res32);
-    tcg_temp_free_i32(res32);
-    tcg_temp_free_i64(left);
-    tcg_temp_free_i64(right);
-    tcg_temp_free_i64(res64);
 }
 
 static void v830_gen_ext_mul_inlined(DisasContext *ctx, int r1, int r2, int dst,
@@ -840,13 +808,15 @@ static void v830_gen_ext_mul_inlined(DisasContext *ctx, int r1, int r2, int dst,
 
 static bool trans_SATADD3(DisasContext *ctx, arg_SATADD3 *a)
 {
-    v830_gen_sat_addsub3(ctx, a->r1, a->r2, a->r3, false);
+    gen_helper_add_saturate(ctx->regs[a->r3], tcg_env, ctx->regs[a->r1], ctx->regs[a->r2]);
+    //v830_gen_sat_addsub3(ctx, a->r1, a->r2, a->r3, false);
     return true;
 }
 
 static bool trans_SATSUB3(DisasContext *ctx, arg_SATSUB3 *a)
 {
-    v830_gen_sat_addsub3(ctx, a->r1, a->r2, a->r3, true);
+    gen_helper_sub_saturate(ctx->regs[a->r3], tcg_env, ctx->regs[a->r2], ctx->regs[a->r1]);
+    //v830_gen_sat_addsub3(ctx, a->r1, a->r2, a->r3, true);
     return true;
 }
 

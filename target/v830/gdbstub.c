@@ -3,7 +3,7 @@
 #include "gdbstub/helpers.h"
 
 int v830_cpu_gdb_read_register(CPUState *cs, GByteArray *buf, int reg)
-{
+{// Get the CPU registers from the CPUState object
     V830CPUState *env = cpu_env(cs);
     if (reg < V830_NUM_GPRS) {
         return gdb_get_reg32(buf, env->regs[reg]);
@@ -26,7 +26,7 @@ int v830_cpu_gdb_read_register(CPUState *cs, GByteArray *buf, int reg)
 }
 
 int v830_cpu_gdb_write_register(CPUState *cs, uint8_t *buf, int reg)
-{
+{// Set CPU registers in the CPUState object
     V830CPUState *env = cpu_env(cs);
     uint32_t value = ldl_p(buf);
     if (reg < V830_NUM_GPRS) {
@@ -45,8 +45,8 @@ int v830_cpu_gdb_write_register(CPUState *cs, uint8_t *buf, int reg)
         case 41: env->dpsw = value; break;
         case 42: env->hccw = value; break;
         case 43: env->pc = value; break;
-        default: return 0;
+        default: return 0; // return 0 bytes were written for invalid registers
         }
     }
-    return 4;
+    return 4; // Return the number of bytes written (always 4 except for an invalid register)
 }

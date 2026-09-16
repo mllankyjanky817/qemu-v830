@@ -702,49 +702,41 @@ static bool trans_MAX3(DisasContext *ctx, arg_MAX3 *a)
     return true;
 }
 
-static bool trans_SHLD3(DisasContext *ctx, arg_SHLD3 *a)
+static bool trans_SHLD3(DisasContext *ctx, arg_SHRD3 *a)
 {
     TCGv_i64 pair = tcg_temp_new_i64();
-    TCGv_i64 shift = tcg_temp_new_i64();
-    TCGv_i64 shift_count = tcg_temp_new_i64();
-    TCGv_i32 result = tcg_temp_new_i32();
+    TCGv_i64 shift = tcg_temp_new_i64();// this needs to be 64 bits because extrh requires a 64-bit shift value.
 
-    tcg_gen_extu_i32_i64(pair, ctx->regs[a->r3]);
-    tcg_gen_shli_i64(pair, pair, 32);
-    tcg_gen_extu_i32_i64(shift, ctx->regs[a->r2]);
-    tcg_gen_or_i64(pair, pair, shift);
-    tcg_gen_extu_i32_i64(shift_count, ctx->regs[a->r1]);
-    tcg_gen_andi_i64(shift_count, shift_count, 0x1f);
-    tcg_gen_shl_i64(pair, pair, shift_count);
-    tcg_gen_extrh_i64_i32(result, pair);
-    tcg_gen_mov_i32(ctx->regs[a->r3], result);
-    tcg_temp_free_i64(pair);
-    tcg_temp_free_i64(shift);
-    tcg_temp_free_i64(shift_count);
-    tcg_temp_free_i32(result);
+    // combine 32-bit r3 (high) and r2 (low) into a 64-bit pair
+    tcg_gen_concat_i32_i64(pair, ctx->regs[a->r2], ctx->regs[a->r3]);
+    
+    // mask shift count to 5 bits
+    tcg_gen_extu_i32_i64(shift, ctx->regs[a->r1]);
+    tcg_gen_andi_i64(shift, shift, 0x1f);
+
+    // shift left and store high 32 bits straight to dest
+    tcg_gen_shl_i64(pair, pair, shift);
+    tcg_gen_extrh_i64_i32(ctx->regs[a->r3], pair);
+
     return true;
 }
 
 static bool trans_SHRD3(DisasContext *ctx, arg_SHRD3 *a)
 {
     TCGv_i64 pair = tcg_temp_new_i64();
-    TCGv_i64 shift = tcg_temp_new_i64();
-    TCGv_i64 shift_count = tcg_temp_new_i64();
-    TCGv_i32 result = tcg_temp_new_i32();
+    TCGv_i64 shift = tcg_temp_new_i64();// same thing
 
-    tcg_gen_extu_i32_i64(pair, ctx->regs[a->r3]);
-    tcg_gen_shli_i64(pair, pair, 32);
-    tcg_gen_extu_i32_i64(shift, ctx->regs[a->r2]);
-    tcg_gen_or_i64(pair, pair, shift);
-    tcg_gen_extu_i32_i64(shift_count, ctx->regs[a->r1]);
-    tcg_gen_andi_i64(shift_count, shift_count, 0x1f);
-    tcg_gen_shr_i64(pair, pair, shift_count);
-    tcg_gen_extrl_i64_i32(result, pair);
-    tcg_gen_mov_i32(ctx->regs[a->r3], result);
-    tcg_temp_free_i64(pair);
-    tcg_temp_free_i64(shift);
-    tcg_temp_free_i64(shift_count);
-    tcg_temp_free_i32(result);
+    // combine 32-bit r3 (high) and r2 (low) into a 64-bit pair
+    tcg_gen_concat_i32_i64(pair, ctx->regs[a->r2], ctx->regs[a->r3]);
+    
+    // mask shift count to 5 bits
+    tcg_gen_extu_i32_i64(shift, ctx->regs[a->r1]);
+    tcg_gen_andi_i64(shift, shift, 0x1f);
+
+    // shift right and store low 32 bits straight to dest
+    tcg_gen_shr_i64(pair, pair, shift);
+    tcg_gen_extrl_i64_i32(ctx->regs[a->r3], pair);
+
     return true;
 }
 
@@ -780,32 +772,21 @@ static bool trans_MUL3(DisasContext *ctx, arg_MUL3 *a)
 static void v830_gen_block_transfer(DisasContext *ctx, int source, int target,
                                     bool to_external, bool instruction_ram)
 {
-    TCGv_i32 external = tcg_temp_new_i32();
     TCGv_i32 internal = tcg_temp_new_i32();
-
-    tcg_gen_mov_i32(external, ctx->regs[source]);
-    tcg_gen_addi_i32(internal, ctx->regs[target],
-                     instruction_ram ? (int32_t)0xfe000000 : 0);
+    tcg_gen_addi_i32(internal, ctx->regs[target], instruction_ram ? (int32_t)0xfe000000 : 0);
+    TCGv_i32 src_base = to_external ? internal : ctx->regs[source];// better to eval this outside of the loop
+    TCGv_i32 dst_base = to_external ? ctx->regs[source] : internal;// ditto
     for (unsigned offset = 0; offset < 16; offset += 4) {
-        TCGv_i32 address = tcg_temp_new_i32();
-        TCGv_i32 value = tcg_temp_new_i32();
+        TCGv_i32 addr_src = tcg_temp_new_i32();
+        TCGv_i32 addr_dst = tcg_temp_new_i32();
+        TCGv_i32 val = tcg_temp_new_i32();
 
-        if (to_external) {
-            tcg_gen_addi_i32(address, internal, offset);
-            tcg_gen_qemu_ld_i32(value, address, V830_MMU_INTERNAL, MO_UL);
-            tcg_gen_addi_i32(address, external, offset);
-            tcg_gen_qemu_st_i32(value, address, V830_MMU_INTERNAL, MO_UL);
-        } else {
-            tcg_gen_addi_i32(address, external, offset);
-            tcg_gen_qemu_ld_i32(value, address, V830_MMU_INTERNAL, MO_UL);
-            tcg_gen_addi_i32(address, internal, offset);
-            tcg_gen_qemu_st_i32(value, address, V830_MMU_INTERNAL, MO_UL);
-        }
-        tcg_temp_free_i32(address);
-        tcg_temp_free_i32(value);
+        tcg_gen_addi_i32(addr_src, src_base, offset);
+        tcg_gen_qemu_ld_i32(val, addr_src, V830_MMU_INTERNAL, MO_UL);
+
+        tcg_gen_addi_i32(addr_dst, dst_base, offset);
+        tcg_gen_qemu_st_i32(val, addr_dst, V830_MMU_INTERNAL, MO_UL);
     }
-    tcg_temp_free_i32(external);
-    tcg_temp_free_i32(internal);
 }
 
 static bool trans_BILD(DisasContext *ctx, arg_BILD *a)

@@ -81,12 +81,19 @@ void helper_div(V830CPUState *env, uint32_t src, uint32_t dst)
     int32_t left = env->regs[dst];
     int32_t right = env->regs[src];
 
-    if (right == 0 || (left == INT32_MIN && right == -1)) {
+    if (right == 0) {
         helper_divide_error(env);
+    }
+    if (left == INT32_MIN && right == -1) {// specifically mentioned in v830 manual.
+        env->regs[30] = 0;
+        env->regs[dst] = INT32_MIN;
+        env->ovf = -1;
+        update_sz(env, env->regs[dst]);
+        return;
     }
     env->regs[30] = left % right;
     env->regs[dst] = left / right;
-    env->ovf = 0;
+
     update_sz(env, env->regs[dst]);
 }
 

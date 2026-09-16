@@ -246,56 +246,47 @@ static bool trans_JMP(DisasContext *ctx, arg_JMP *a)
     return true;
 }
 
-static void v830_gen_mul(DisasContext *ctx, int src_idx, int dst_idx, bool is_signed)
+static void v830_gen_mul(DisasContext *ctx, int src_idx, int dst_idx, bool is_signed) 
+// Can be represented in tcg since flags don't require conditional branching that would clobber temporaries.
 {
     TCGv_i32 t0 = ctx->regs[src_idx];
     TCGv_i32 t1 = ctx->regs[dst_idx];
-    TCGv_i32 low = tcg_temp_new_i32();
-    TCGv_i32 high = tcg_temp_new_i32();
-    TCGv_i32 tmp = tcg_temp_new_i32();
 
-    /* 1. Compute 64-bit product into high and low 32-bit registers */
+    /* Destination registers */
+    TCGv_i32 high = ctx->regs[30];
+    /* If dst is r30, use a temporary to prevent low and high from aliasing */
+    TCGv_i32 low = (dst_idx == 30) ? tcg_temp_new_i32() : ctx->regs[dst_idx];
+
     if (is_signed) {
         tcg_gen_muls2_i32(low, high, t0, t1);
 
-        /* 2. Check for signed overflow:
-         * Overflow occurs if product != (int64_t)(int32_t)low
-         * Sign-extending 'low' into 'tmp' and checking if 'high != tmp'
-         */
-        tcg_gen_sari_i32(tmp, low, 31);
-        tcg_gen_xor_i32(tmp, high, tmp);
-        tcg_gen_setcondi_i32(TCG_COND_NE, cpu_OVF, tmp, 0);
-        tcg_gen_shli_i32(cpu_OVF, cpu_OVF, 31); /* Normalize to bit 31 for OVF */
+        /* Overflow detection: high != (low >> 31) */
+        tcg_gen_sari_i32(cpu_OVF, low, 31);
+        tcg_gen_xor_i32(cpu_OVF, cpu_OVF, high);
+        tcg_gen_setcondi_i32(TCG_COND_NE, cpu_OVF, cpu_OVF, 0);
+        tcg_gen_shli_i32(cpu_OVF, cpu_OVF, 31);
     } else {
         tcg_gen_mulu2_i32(low, high, t0, t1);
 
-        /* Unsigned overflow occurs if high-order 32 bits are non-zero */
+        /* Unsigned overflow detection: high != 0 */
         tcg_gen_setcondi_i32(TCG_COND_NE, cpu_OVF, high, 0);
         tcg_gen_shli_i32(cpu_OVF, cpu_OVF, 31);
     }
 
-    /* 3. Update R30 and reg2 (dst).
-     * Handle edge case: If reg2 is r30 (dst_idx == 30), low-order bits overwrite r30.
-     * Otherwise, r30 gets the high 32 bits, and reg2 gets the low 32 bits.
-     */
+    /* If dst is r30, low-order bits must overwrite r30. possibly redundant. */
     if (dst_idx == 30) {
         tcg_gen_mov_i32(ctx->regs[30], low);
-    } else {
-        tcg_gen_mov_i32(ctx->regs[30], high);
-        tcg_gen_mov_i32(ctx->regs[dst_idx], low);
     }
 
-    /* 4. Update Zero and Sign flags based on the low 32 bits (reg2 result) */
+    /* Flags set based on low 32 bits */
     tcg_gen_mov_i32(cpu_ZF, low);
     tcg_gen_mov_i32(cpu_SF, low);
-    tcg_temp_free_i32(low);
-    tcg_temp_free_i32(high);
-    tcg_temp_free_i32(tmp);
 }
 
 static bool trans_MUL(DisasContext *ctx, arg_MUL *a)
 {
     v830_gen_mul(ctx, a->src, a->dst, true);
+
     return true;
 }
 
@@ -305,14 +296,14 @@ static bool trans_MULU(DisasContext *ctx, arg_MULU *a)
     return true;
 }
 
-static bool trans_DIV(DisasContext *ctx, arg_DIV *a)
+static bool trans_DIV(DisasContext *ctx, arg_DIV *a) // needs to be in helpers because of div by zero and signed overflow handling.
 {
     gen_helper_div(tcg_env, tcg_constant_i32(a->src),
                    tcg_constant_i32(a->dst));
     return true;
 }
 
-static bool trans_DIVU(DisasContext *ctx, arg_DIVU *a)
+static bool trans_DIVU(DisasContext *ctx, arg_DIVU *a) // needs to be in helpers because of div by zero handling.
 {
     gen_helper_divu(tcg_env, tcg_constant_i32(a->src),
                     tcg_constant_i32(a->dst));

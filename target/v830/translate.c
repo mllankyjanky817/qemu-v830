@@ -635,28 +635,8 @@ static bool trans_MULI(DisasContext *ctx, arg_MULI *a)
 
 static bool trans_MACI(DisasContext *ctx, arg_MACI *a)
 {
-    TCGv_i64 src1_64 = tcg_temp_new_i64();
-    TCGv_i64 imm_64 = tcg_temp_new_i64();
-    TCGv_i64 dst_64 = tcg_temp_new_i64();
-    TCGv_i64 res64 = tcg_temp_new_i64();
 
-    /* Sign-extend inputs to 64-bit */
-    tcg_gen_ext_i32_i64(src1_64, ctx->regs[a->src]);
-    tcg_gen_movi_i64(imm_64, (int16_t)a->imm);
-    tcg_gen_ext_i32_i64(dst_64, ctx->regs[a->dst]);
-
-    /* res64 = (src * imm) + dst */
-    tcg_gen_mul_i64(res64, src1_64, imm_64);
-    tcg_gen_add_i64(res64, res64, dst_64);
-
-    /* Clamp and write back without modifying flags (set_flags = 0) */
-    TCGv_i32 res32 = v830_gen_saturate_i64(ctx, res64);
-    tcg_gen_mov_i32(ctx->regs[a->dst], res32);
-    tcg_temp_free_i32(res32);
-    tcg_temp_free_i64(src1_64);
-    tcg_temp_free_i64(imm_64);
-    tcg_temp_free_i64(dst_64);
-    tcg_temp_free_i64(res64);
+    gen_helper_mac(ctx->regs[a->dst], tcg_env, ctx->regs[a->src], tcg_constant_i32(a->imm), ctx->regs[a->dst]);
     return true;
 }
 
@@ -691,69 +671,6 @@ static bool trans_CAXI(DisasContext *ctx, arg_CAXI *a)
     tcg_temp_free_i32(new_val);
     return true;
 }
-
-static TCGv_i32 v830_gen_clamp_sat_i64(DisasContext *ctx, TCGv_i64 res64)
-{
-    TCGv_i64 out_of_range = tcg_temp_new_i64();
-    TCGv_i64 below_range = tcg_temp_new_i64();
-    TCGv_i32 sat_mask = tcg_temp_new_i32();
-    TCGv_i32 res32 = tcg_temp_new_i32();
-
-    /* 1. Check bounds and set PSW.SAT bit if res64 > INT32_MAX or res64 < INT32_MIN */
-    tcg_gen_setcondi_i64(TCG_COND_GT, out_of_range, res64, INT32_MAX);
-    tcg_gen_setcondi_i64(TCG_COND_LT, below_range, res64, INT32_MIN);
-    tcg_gen_or_i64(out_of_range, out_of_range, below_range);
-
-    tcg_gen_extrl_i64_i32(sat_mask, out_of_range);
-    tcg_gen_or_i32(cpu_SATF, cpu_SATF, sat_mask);
-
-    /* 2. Clamp 64-bit value to signed 32-bit limits */
-    tcg_gen_smin_i64(res64, res64, tcg_constant_i64(INT32_MAX));
-    tcg_gen_smax_i64(res64, res64, tcg_constant_i64(INT32_MIN));
-    tcg_gen_extrl_i64_i32(res32, res64);
-
-    tcg_temp_free_i64(out_of_range);
-    tcg_temp_free_i64(below_range);
-    tcg_temp_free_i32(sat_mask);
-
-    return res32;
-}
-
-static void v830_gen_ext_mul_inlined(DisasContext *ctx, int r1, int r2, int dst,
-                                     bool add, bool high)
-{
-    TCGv_i64 left = tcg_temp_new_i64();
-    TCGv_i64 right = tcg_temp_new_i64();
-    TCGv_i64 res64 = tcg_temp_new_i64();
-    TCGv_i64 acc64 = tcg_temp_new_i64();
-    TCGv_i32 res32;
-
-    tcg_gen_ext_i32_i64(left, ctx->regs[r1]);
-    tcg_gen_ext_i32_i64(right, ctx->regs[r2]);
-    tcg_gen_mul_i64(res64, left, right);
-
-    if (high) {
-        /* Extract upper 32-bits shifted down to LSB */
-        tcg_gen_sari_i64(res64, res64, 32);
-    }
-
-    if (add) {
-        /* Accumulate with destination register */
-        tcg_gen_ext_i32_i64(acc64, ctx->regs[dst]);
-        tcg_gen_add_i64(res64, res64, acc64);
-    }
-
-    /* Clamp result to signed 32-bit limits and set PSW.SAT without setting ZF/SF */
-    res32 = v830_gen_clamp_sat_i64(ctx, res64);
-    tcg_gen_mov_i32(ctx->regs[dst], res32);
-    tcg_temp_free_i32(res32);
-    tcg_temp_free_i64(left);
-    tcg_temp_free_i64(right);
-    tcg_temp_free_i64(res64);
-    tcg_temp_free_i64(acc64);
-}
-
-
 
 static bool trans_SATADD3(DisasContext *ctx, arg_SATADD3 *a)
 {
@@ -833,25 +750,30 @@ static bool trans_SHRD3(DisasContext *ctx, arg_SHRD3 *a)
 
 static bool trans_MACT3(DisasContext *ctx, arg_MACT3 *a)
 {
-    v830_gen_ext_mul_inlined(ctx, a->r1, a->r2, a->r3, true, true);
+    gen_helper_mact(ctx->regs[a->r3], tcg_env, ctx->regs[a->r1], ctx->regs[a->r2], ctx->regs[a->r3]);
     return true;
 }
 
 static bool trans_MAC3(DisasContext *ctx, arg_MAC3 *a)
+
 {
-    v830_gen_ext_mul_inlined(ctx, a->r1, a->r2, a->r3, true, false);
+    gen_helper_mac(ctx->regs[a->r3], tcg_env, ctx->regs[a->r1], ctx->regs[a->r2], ctx->regs[a->r3]);
+    //v830_gen_ext_mul_inlined(ctx, a->r1, a->r2, a->r3, true, false);
     return true;
 }
 
 static bool trans_MULT3(DisasContext *ctx, arg_MULT3 *a)
 {
-    v830_gen_ext_mul_inlined(ctx, a->r1, a->r2, a->r3, false, true);
+    TCGv_i32 discard = tcg_temp_new_i32(); // you NEED a dummy variable; you can't use NULL for something you don't need.
+    tcg_gen_muls2_i32(discard, ctx->regs[a->r3], ctx->regs[a->r1], ctx->regs[a->r2]); 
+    tcg_temp_free_i32(discard);
     return true;
 }
 
 static bool trans_MUL3(DisasContext *ctx, arg_MUL3 *a)
 {
-    v830_gen_ext_mul_inlined(ctx, a->r1, a->r2, a->r3, false, false);
+    gen_helper_mul_saturate (ctx->regs[a->r3], tcg_env, ctx->regs[a->r2], ctx->regs[a->r1]);
+    //v830_gen_ext_mul_inlined(ctx, a->r1, a->r2, a->r3, false, false);
     return true;
 }
 

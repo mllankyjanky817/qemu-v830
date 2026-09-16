@@ -51,6 +51,32 @@ uint32_t helper_add_saturate(V830CPUState *env, uint32_t a, uint32_t b)// modifi
     return (uint32_t)res;
 }
 
+uint32_t helper_mac(V830CPUState *env, uint32_t a, uint32_t b, uint32_t c)
+{
+    int64_t mac = (int64_t)(int32_t)a * (int32_t)b + (int32_t)c;
+
+    if ((int32_t)mac != mac) {
+        env->satf = 1;
+        return (uint32_t)(0x7FFFFFFF ^ (mac >> 63));
+    }
+
+    return (uint32_t)mac;
+}
+
+uint32_t helper_mact(V830CPUState *env, uint32_t a, uint32_t b, uint32_t c)
+{
+    int64_t mac = (int64_t)(int32_t)a * (int32_t)b;
+    mac >>= 32;
+    mac += (int32_t)c;
+
+    if ((int32_t)mac != mac) {
+        env->satf = 1;
+        return (uint32_t)(0x7FFFFFFF ^ (mac >> 63));
+    }
+
+    return (uint32_t)mac;
+}
+
 uint32_t helper_sub_saturate(V830CPUState *env, uint32_t a, uint32_t b)// ditto
 {
     env->ovf = 0;
@@ -65,6 +91,24 @@ uint32_t helper_sub_saturate(V830CPUState *env, uint32_t a, uint32_t b)// ditto
     }
 
     env->zf = env->sf = (uint32_t)res;
+    return (uint32_t)res;
+}
+
+uint32_t helper_mul_saturate(V830CPUState *env, uint32_t a, uint32_t b)// modified from ARM op_helper.c
+{
+    
+    // Perform full 64-bit signed multiplication
+    int64_t res = (int64_t)(int32_t)a * (int64_t)(int32_t)b;
+
+    // Overflow occurs if the 64-bit product exceeds the int32_t bounds
+    if (res > INT32_MAX || res < INT32_MIN) {
+        env->satf = 1;
+        
+        // If the sign bits of 'a' and 'b' differ, result is negative -> saturate to INT32_MIN (0x80000000)
+        // If the sign bits are the same, result is positive -> saturate to INT32_MAX (0x7FFFFFFF)
+        res = ((a ^ b) & 0x80000000) ? 0x80000000 : 0x7FFFFFFF;
+    }
+
     return (uint32_t)res;
 }
 

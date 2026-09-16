@@ -101,12 +101,9 @@ uint32_t helper_mul_saturate(V830CPUState *env, uint32_t a, uint32_t b)// modifi
     int64_t res = (int64_t)(int32_t)a * (int64_t)(int32_t)b;
 
     // Overflow occurs if the 64-bit product exceeds the int32_t bounds
-    if (res > INT32_MAX || res < INT32_MIN) {
+    if ((int32_t)res != res) {
         env->satf = 1;
-        
-        // If the sign bits of 'a' and 'b' differ, result is negative -> saturate to INT32_MIN (0x80000000)
-        // If the sign bits are the same, result is positive -> saturate to INT32_MAX (0x7FFFFFFF)
-        res = ((a ^ b) & 0x80000000) ? 0x80000000 : 0x7FFFFFFF;
+        return (uint32_t)(0x7FFFFFFF ^ (res >> 63));
     }
 
     return (uint32_t)res;

@@ -644,31 +644,22 @@ static bool trans_CAXI(DisasContext *ctx, arg_CAXI *a)
 {
     TCGv_i32 addr = tcg_temp_new_i32();
     TCGv_i32 old_val = tcg_temp_new_i32();
-    TCGv_i32 cmp_val = tcg_temp_new_i32();
-    TCGv_i32 new_val = tcg_temp_new_i32();
 
-    /* 1. Calculate word-aligned memory address: (regs[src] + imm) & ~3 */
+    // calculate word-aligned memory address: (regs[src] + imm)
     tcg_gen_addi_i32(addr, ctx->regs[a->src], (int16_t)a->imm);
+    // & ~3 (word-aligned)
     tcg_gen_andi_i32(addr, addr, ~3u);
 
-    /* 2. Set up compare (dst) and store (r30) values */
-    tcg_gen_mov_i32(cmp_val, ctx->regs[a->dst]);
-    tcg_gen_mov_i32(new_val, ctx->regs[30]);
-
-    /* 3. Execute atomic compare-and-swap via softmmu */
-    tcg_gen_atomic_cmpxchg_i32(old_val, addr, cmp_val, new_val,
+    // The compare and exchange itself (cmp = regs[dst], new = regs[30])
+    tcg_gen_atomic_cmpxchg_i32(old_val, addr, ctx->regs[a->dst], ctx->regs[30],
                               0, MO_TEUL);
 
-    /* 4. Update arithmetic flags for subtraction: dst - old_val */
+    // Update flags
     v830_gen_sub(ctx, ctx->regs[a->dst], old_val, NULL, false);
 
-    /* 5. Return the previous memory value into dst */
+    // return original value into dst
     tcg_gen_mov_i32(ctx->regs[a->dst], old_val);
 
-    tcg_temp_free_i32(addr);
-    tcg_temp_free_i32(old_val);
-    tcg_temp_free_i32(cmp_val);
-    tcg_temp_free_i32(new_val);
     return true;
 }
 

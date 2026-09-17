@@ -9,7 +9,7 @@
 #include "system/system.h"
 #include "hw/v830/v832_soc.h"
 
-static void v832_soc_nmi(void *opaque, int n, int level)
+static void v832_soc_nmi(void *opaque, int n, int level) // wire up NMI GPIO
 {
     V832SoCState *s = opaque;
 
@@ -80,7 +80,7 @@ static void v832_soc_realize(DeviceState *dev, Error **errp)
     {
         static const hwaddr bcu_offsets[] = {
             0x10, 0x12, 0x14, 0x16, 0x100, 0x102,
-            0x110, 0x112, 0x122, 0x124,
+            0x110, 0x112, 0x22, 0x24,
         };
         unsigned index;
 
@@ -91,7 +91,7 @@ static void v832_soc_realize(DeviceState *dev, Error **errp)
         }
     }
 
-    qdev_prop_set_chr(DEVICE(&s->peripherals), "chardev", serial_hd(0));
+    qdev_prop_set_chr(DEVICE(&s->peripherals), "chardev", serial_hd(0)); // for UART
     qdev_connect_clock_in(DEVICE(&s->peripherals), "clk", s->bus_clk);
     s->peripherals.cpu = &s->cpu;
     s->peripherals.dma = &s->dma;
@@ -106,7 +106,7 @@ static void v832_soc_realize(DeviceState *dev, Error **errp)
     if (!sysbus_realize(SYS_BUS_DEVICE(&s->dma), errp)) {
         return;
     }
-    qdev_connect_gpio_out_named(DEVICE(&s->cpu), "stopak", 0,
+    qdev_connect_gpio_out_named(DEVICE(&s->cpu), "stopak", 0, // connect the GPIOs!
                                 qdev_get_gpio_in_named(
                                     DEVICE(&s->dma), "stopak", 0));
     for (unsigned channel = 0; channel < V832_DMA_CHANNELS; channel++) {

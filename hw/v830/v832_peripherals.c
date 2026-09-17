@@ -10,6 +10,9 @@
 #include "target/v830/cpu.h"
 #include "hw/v830/v832_peripherals.h"
 
+
+// Smaller v832 peripherals are implemented here instead of in their own source files.
+
 #define V832_IO_BASE 0xc0000000u
 #define V832_IO_SIZE 0x400
 
@@ -87,7 +90,7 @@ static const unsigned v832_intp_sources[8] = {
     0, 4, 8, 12, 6, 5, 2, 1,
 };
 
-static const int v832_portb_intp[8] = {
+static const int v832_portb_intp[8] = { // priorities of port B pins for interrupt sources
     -1, -1, 0, 1, 4, 5, 8, 12,
 };
 
@@ -106,15 +109,15 @@ static void v832_timer1_output_update(V832PeripheralsState *s,
     if (!(s->toc1 & enable) || (s->toc1 & BIT(output))) {
         level = !(s->toc1 & active_level);
     }
-    qemu_set_irq(s->timer_out[output], level);
+    qemu_set_irq(s->timer_out[output], level); // update the GPIO output for the timer output pin
 }
 
-static unsigned v832_intp_mode(const V832PeripheralsState *s, unsigned n)
+static unsigned v832_intp_mode(const V832PeripheralsState *s, unsigned n) // timer 1 and 4 overflow status read.
 {
     return (s->imod >> (n * 2)) & 0x3;
 }
 
-static unsigned v832_interrupt_level(const V832PeripheralsState *s,
+static unsigned v832_interrupt_level(const V832PeripheralsState *s, // priorities of interrupt sources for the CPU.
                                      unsigned source)
 {
     unsigned group = source >> 2;
@@ -123,7 +126,7 @@ static unsigned v832_interrupt_level(const V832PeripheralsState *s,
     return (group_priority << 2) | (source & 0x3);
 }
 
-static bool v832_source_is_level(const V832PeripheralsState *s,
+static bool v832_source_is_level(const V832PeripheralsState *s, // determine if the interrupt source is level- or edge-sensitive.
                                  unsigned source)
 {
     unsigned pin;
@@ -142,7 +145,7 @@ static bool v832_source_is_level(const V832PeripheralsState *s,
     return ((s->imod >> (8 + pin * 2)) & 0x3) == 0;
 }
 
-static void v832_update_irq(V832PeripheralsState *s)
+static void v832_update_irq(V832PeripheralsState *s) // update the CPU interrupt line and the GPIO output for the interrupt controller.
 {
     uint16_t deliverable = s->irr & (uint16_t)~s->imr & 0x7fffu;
     unsigned level = 0;
@@ -168,7 +171,7 @@ static void v832_update_irq(V832PeripheralsState *s)
         qemu_set_irq(s->irq, 1);
     } else {
         if (s->cpu) {
-            cpu_reset_interrupt(CPU(s->cpu), CPU_INTERRUPT_HARD);
+            cpu_reset_interrupt(CPU(s->cpu), CPU_INTERRUPT_HARD); //  for resets
         }
         qemu_set_irq(s->irq, 0);
     }
@@ -180,7 +183,7 @@ static void v832_raise_irq(V832PeripheralsState *s, unsigned source)
     v832_update_irq(s);
 }
 
-static void v832_peripherals_intp(void *opaque, int n, int level)
+static void v832_peripherals_intp(void *opaque, int n, int level) // external interrupt GPIOs
 {
     V832PeripheralsState *s = opaque;
     int source;
@@ -200,7 +203,7 @@ static void v832_peripherals_intp(void *opaque, int n, int level)
     if (n >= 4 && active && !(s->tum1 & BIT(n))) {
         unsigned capture = n - 4;
 
-        v832_timer1_sync(s, qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL));
+        v832_timer1_sync(s, qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL)); // sync up everything before capturing the timer value
         s->cc[capture] = s->tm1;
         v832_raise_irq(s, source);
     }
@@ -226,7 +229,7 @@ static void v832_peripherals_dma_irq(void *opaque, int n, int level)
     }
 }
 
-static void v832_update_port_outputs(V832PeripheralsState *s)
+static void v832_update_port_outputs(V832PeripheralsState *s) // update the GPIO outputs for the port pins
 {
     for (unsigned bit = 0; bit < 5; bit++) {
         qemu_set_irq(s->port_out[bit],
@@ -288,7 +291,7 @@ static void v832_dmaak_in(void *opaque, int n, int level)
     }
 }
 
-static void v832_portb_in(void *opaque, int n, int level)
+static void v832_portb_in(void *opaque, int n, int level) // port B has the most secondary functions.
 {
     V832PeripheralsState *s = opaque;
     bool previous;
@@ -296,7 +299,7 @@ static void v832_portb_in(void *opaque, int n, int level)
     unsigned mode;
     bool active;
 
-    if (level) {
+    if (level) { // set the input level for the port B pin.
         previous = !!(s->portb_input & BIT(n));
         s->portb_input |= BIT(n);
     } else {
@@ -305,7 +308,7 @@ static void v832_portb_in(void *opaque, int n, int level)
     }
     source = v832_portb_intp[n];
     mode = (s->imod >> (8 + n * 2)) & 0x3;
-    active = mode == 3 ? level != previous : level && !previous;
+    active = mode == 3 ? level != previous : level && !previous; // edge-sensitive or level-sensitive
     if ((s->pbc & BIT(n)) && source >= 0) {
         if (mode == 0 && level) {
             v832_raise_irq(s, source);
@@ -316,7 +319,7 @@ static void v832_portb_in(void *opaque, int n, int level)
             v832_raise_irq(s, source);
         }
     }
-    if (n == 0 && (s->pbc & BIT(0)) && level && !previous &&
+    if (n == 0 && (s->pbc & BIT(0)) && level && !previous && // timer 1 external clock input
         (s->tmc1 & (TMC1_CE | TMC1_ETI)) == (TMC1_CE | TMC1_ETI)) {
         v832_timer1_external_tick(s);
     }
@@ -332,8 +335,8 @@ static void v832_portb_in(void *opaque, int n, int level)
         }
     }
 }
-
-static void v832_csi_raise_done(V832PeripheralsState *s)
+// CSI
+static void v832_csi_raise_done(V832PeripheralsState *s) // to work with DMA
 {
     s->csim0 &= ~CSIM0_CSOT;
     v832_raise_irq(s, INTCSI_SOURCE);
@@ -342,7 +345,7 @@ static void v832_csi_raise_done(V832PeripheralsState *s)
     }
 }
 
-static uint64_t v832_csi_half_period_ns(const V832PeripheralsState *s)
+static uint64_t v832_csi_half_period_ns(const V832PeripheralsState *s) // calculate the half-period of the CSI clock
 {
     unsigned cls = s->csim0 & CSIM0_CLS_MASK;
     unsigned divider;
@@ -371,7 +374,7 @@ static uint64_t v832_csi_half_period_ns(const V832PeripheralsState *s)
     return clock_ticks_to_ns(s->clk, divider);
 }
 
-static void v832_csi_sample_rising(V832PeripheralsState *s)
+static void v832_csi_sample_rising(V832PeripheralsState *s) // self-explanatory
 {
     unsigned bit = s->csim0 & CSIM0_MOD ? s->csi_bit : 7 - s->csi_bit;
 
@@ -390,7 +393,7 @@ static void v832_csi_sample_rising(V832PeripheralsState *s)
     }
 }
 
-static void v832_csi_drive_falling(V832PeripheralsState *s)
+static void v832_csi_drive_falling(V832PeripheralsState *s) //ditto
 {
     unsigned bit = s->csim0 & CSIM0_MOD ? s->csi_bit : 7 - s->csi_bit;
 
@@ -410,7 +413,7 @@ static void v832_csi_clock_edge(V832PeripheralsState *s, int level)
     }
 }
 
-static void v832_csi_sclk_in(void *opaque, int n, int level)
+static void v832_csi_sclk_in(void *opaque, int n, int level) // external clock input for the CSI interface
 {
     V832PeripheralsState *s = opaque;
 
@@ -421,7 +424,7 @@ static void v832_csi_sclk_in(void *opaque, int n, int level)
     v832_csi_clock_edge(s, level);
 }
 
-static void v832_csi_si_in(void *opaque, int n, int level)
+static void v832_csi_si_in(void *opaque, int n, int level) // CSI serial in
 {
     V832PeripheralsState *s = opaque;
 
@@ -430,7 +433,7 @@ static void v832_csi_si_in(void *opaque, int n, int level)
     }
 }
 
-static void v832_csi_tick(void *opaque)
+static void v832_csi_tick(void *opaque) // qemu timer callback for the CSI interface
 {
     V832PeripheralsState *s = opaque;
     uint64_t half_period;
@@ -466,7 +469,7 @@ static void v832_csi_tick(void *opaque)
               qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL) + half_period);
 }
 
-static void v832_csi_start(V832PeripheralsState *s)
+static void v832_csi_start(V832PeripheralsState *s) // start a CSI transfer, either with an external clock or with the internal clock.
 {
     unsigned cls = s->csim0 & CSIM0_CLS_MASK;
 
@@ -503,7 +506,7 @@ static void v832_csi_start(V832PeripheralsState *s)
                       qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL) + half_period);
     }
 }
-
+// UART
 static void v832_uart_receive(void *opaque, const uint8_t *buf, int size)
 {
     V832PeripheralsState *s = opaque;
@@ -513,12 +516,12 @@ static void v832_uart_receive(void *opaque, const uint8_t *buf, int size)
     }
     if (s->rxb0 & 0xff) {
         s->asis0 |= ASIS0_OV;
-        v832_raise_irq(s, V832_IRQ_UART_ERR);
+        v832_raise_irq(s, V832_IRQ_UART_ERR); // error check
     }
     s->rxb0 = buf[0];
-    v832_raise_irq(s, V832_IRQ_UART_RX);
+    v832_raise_irq(s, V832_IRQ_UART_RX); // normal maskable interrupt for UART receive
     if (s->dma) {
-        v832_dma_set_internal_request(s->dma, V832_DMA_REQUEST_UART_RX);
+        v832_dma_set_internal_request(s->dma, V832_DMA_REQUEST_UART_RX); // this is a request source for DMA as well
     }
 }
 
@@ -529,7 +532,7 @@ static int v832_uart_can_receive(void *opaque)
     return (s->asim00 & ASIM00_RXE) != 0;
 }
 
-static void v832_uart_event(void *opaque, QEMUChrEvent event)
+static void v832_uart_event(void *opaque, QEMUChrEvent event) // Error handling for UART.
 {
     V832PeripheralsState *s = opaque;
 
@@ -607,9 +610,24 @@ static uint64_t v832_timer4_tick_ns(const V832PeripheralsState *s)
     return clock_ticks_to_ns(s->clk, divider);
 }
 
-static void v832_timer4_schedule(V832PeripheralsState *s);
+static void v832_timer4_schedule(V832PeripheralsState *s) // schedule with qemu the next timer 4 tick based on the current timer value and compare value.
+{
+    uint64_t ticks;
 
-static uint64_t v832_elapsed_ticks(const V832PeripheralsState *s,
+    if (s->timer4_clear_pending) {
+        ticks = 1;
+    } else if (s->cm4 != 0) {
+        ticks = s->cm4 > s->tm4 ? s->cm4 - s->tm4
+                                : UINT16_MAX - s->tm4 + s->cm4 + 1;
+    } else {
+        ticks = UINT16_MAX - s->tm4 + 1;
+    }
+
+    timer_mod(&s->timer4, qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL) +
+              ticks * v832_timer4_tick_ns(s));
+}
+
+static uint64_t v832_elapsed_ticks(const V832PeripheralsState *s, // little helper
                                    uint64_t elapsed_ns, uint32_t divider)
 {
     unsigned hz = clock_get_hz(s->clk);
@@ -622,7 +640,7 @@ static uint64_t v832_elapsed_ticks(const V832PeripheralsState *s,
                     (uint64_t)divider * NANOSECONDS_PER_SECOND);
 }
 
-static void v832_timer1_sync(V832PeripheralsState *s, uint64_t now_ns)
+static void v832_timer1_sync(V832PeripheralsState *s, uint64_t now_ns) // synchronize the timer 1 with the current time and generate any pending interrupts.
 {
     uint32_t divider = (s->tmc1 & 0x02u) ? 4u : 2u;
     uint64_t elapsed_ns;
@@ -646,7 +664,7 @@ static void v832_timer1_sync(V832PeripheralsState *s, uint64_t now_ns)
     s->timer1_last_ns = now_ns;
 }
 
-static void v832_timer1_external_tick(V832PeripheralsState *s)
+static void v832_timer1_external_tick(V832PeripheralsState *s) // external timer handling for timer 1, including overflow and compare match interrupts.
 {
     unsigned index;
 
@@ -671,7 +689,7 @@ static void v832_timer1_external_tick(V832PeripheralsState *s)
     }
 }
 
-static void v832_timer4_sync(V832PeripheralsState *s, uint64_t now_ns)
+static void v832_timer4_sync(V832PeripheralsState *s, uint64_t now_ns) // synchronize the timer 4 with the current time and generate any pending interrupts.
 {
     uint32_t divider = ((s->tmc4 & 0x03u) == 0x02u) ? 8u : 2u;
     uint32_t tick_divider = divider * ((s->tmc4 & 0x04u) ? 32u : 16u);
@@ -722,7 +740,7 @@ static void v832_timer4_sync(V832PeripheralsState *s, uint64_t now_ns)
         ticks -= to_compare;
         v832_raise_irq(s, INTCM4_SOURCE);
         if (s->dma) {
-            v832_dma_set_internal_request(s->dma, V832_DMA_REQUEST_TIMER4);
+            v832_dma_set_internal_request(s->dma, V832_DMA_REQUEST_TIMER4); // this includes being a dma request source!
         }
         if (ticks == 0) {
             s->timer4_clear_pending = true;
@@ -760,23 +778,6 @@ static void v832_timer1_schedule(V832PeripheralsState *s)
         timer_mod(&s->timer1, qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL) +
                   ticks * v832_timer1_tick_ns(s));
     }
-}
-
-static void v832_timer4_schedule(V832PeripheralsState *s)
-{
-    uint64_t ticks;
-
-    if (s->timer4_clear_pending) {
-        ticks = 1;
-    } else if (s->cm4 != 0) {
-        ticks = s->cm4 > s->tm4 ? s->cm4 - s->tm4
-                                : UINT16_MAX - s->tm4 + s->cm4 + 1;
-    } else {
-        ticks = UINT16_MAX - s->tm4 + 1;
-    }
-
-    timer_mod(&s->timer4, qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL) +
-              ticks * v832_timer4_tick_ns(s));
 }
 
 static void v832_timer1_tick(void *opaque)
@@ -822,7 +823,7 @@ static void v832_timer4_tick(void *opaque)
     v832_timer4_schedule(s);
 }
 
-static uint64_t v832_peripherals_read(void *opaque, hwaddr offset,
+static uint64_t v832_peripherals_read(void *opaque, hwaddr offset, // read config registers, GPIO, PC, UART receive, timer values, etc.
                                       unsigned size)
 {
     V832PeripheralsState *s = opaque;
@@ -878,7 +879,7 @@ static uint64_t v832_peripherals_read(void *opaque, hwaddr offset,
     }
 }
 
-static void v832_peripherals_write(void *opaque, hwaddr offset,
+static void v832_peripherals_write(void *opaque, hwaddr offset, // and also write to them. Some have unique behavior when written to.
                                    uint64_t value, unsigned size)
 {
     V832PeripheralsState *s = opaque;
@@ -1042,7 +1043,7 @@ static const MemoryRegionOps v832_peripherals_ops = {
     .valid.max_access_size = 2,
 };
 
-static void v832_peripherals_reset(DeviceState *dev)
+static void v832_peripherals_reset(DeviceState *dev) // reset state as specified in the V832 manual
 {
     V832PeripheralsState *s = V832_PERIPHERALS(dev);
 
@@ -1110,7 +1111,7 @@ static void v832_peripherals_realize(DeviceState *dev, Error **errp)
                           "v832-internal-io", V832_IO_SIZE);
     sysbus_init_mmio(SYS_BUS_DEVICE(dev), &s->iomem);
     sysbus_init_irq(SYS_BUS_DEVICE(dev), &s->irq);
-    qdev_init_gpio_in_named(dev, v832_peripherals_dma_irq, "dma-irq", 1);
+    qdev_init_gpio_in_named(dev, v832_peripherals_dma_irq, "dma-irq", 1); // a lot of specific GPIOs for the V832 peripherals
     qdev_init_gpio_in_named(dev, v832_peripherals_intp, "intp", 8);
     qdev_init_gpio_in_named(dev, v832_port_in, "port-in", 5);
     qdev_init_gpio_in_named(dev, v832_porta_in, "porta-in", 8);

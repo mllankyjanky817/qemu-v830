@@ -11,19 +11,19 @@ OBJECT_DECLARE_SIMPLE_TYPE(V832BCUState, V832_BCU)
 #define V832_BLOCK_COUNT 8
 #define V832_SDRAM_BLOCKS 2
 
-typedef struct V832BCURegion {
+typedef struct V832BCURegion { // define a structure for the V832 BCU region.
     MemoryRegion iomem;
     struct V832BCUState *state;
     hwaddr offset;
 } V832BCURegion;
 
-typedef struct V832BCUSDRAMRegion {
+typedef struct V832BCUSDRAMRegion { // define a structure for the V832 BCU SDRAM region.
     MemoryRegion iomem;
     struct V832BCUState *state;
     unsigned block;
 } V832BCUSDRAMRegion;
 
-struct V832BCUState {
+struct V832BCUState { // define the state of the V832 BCU device.
     SysBusDevice parent_obj;
 
     /* MMIO interface */

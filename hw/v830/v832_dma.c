@@ -19,7 +19,7 @@
 #define REG_DDAL 0x06
 #define REG_DBCH 0x08
 #define REG_DBCL 0x0a
-#define REG_DCHC 0x0c
+#define REG_DCHC 0x0c // + 0x30, 0x40, 0x50, or 0x60 for channels 1-4.
 #define REG_DC   0x3e
 
 /* DCHC Register Fields */
@@ -44,20 +44,22 @@ FIELD(DC, TCSA, 8, 1)
 
 static bool v832_dma_valid_control(uint16_t dchc)
 {
-    unsigned transfer_type = FIELD_EX16(dchc, DCHC, TTYP);
-    unsigned transfer_block = FIELD_EX16(dchc, DCHC, TBT);
-    unsigned source_dir = FIELD_EX16(dchc, DCHC, SAD);
-    unsigned dest_dir = FIELD_EX16(dchc, DCHC, DAD);
-    unsigned data_size = FIELD_EX16(dchc, DCHC, DS);
+    unsigned char transfer_type = FIELD_EX16(dchc, DCHC, TTYP);
+    unsigned char transfer_block = FIELD_EX16(dchc, DCHC, TBT);
+    unsigned char source_dir = FIELD_EX16(dchc, DCHC, SAD);
+    unsigned char dest_dir = FIELD_EX16(dchc, DCHC, DAD);
+    unsigned char data_size = FIELD_EX16(dchc, DCHC, DS);
 
-    return transfer_type != 2 && transfer_type != 3 &&
+    return transfer_type != 2 && transfer_type != 3 && // return 0 if invalid, 1 if valid
            transfer_block != 3 &&
            source_dir != 3 &&
            dest_dir != 3 &&
            data_size != 3;
 }
 
-static bool v832_dma_io_address(hwaddr address)
+
+// helpers
+static bool v832_dma_io_address(hwaddr address) 
 {
     return address >= V830_IO_VIRT_BASE &&
            address < V830_IO_VIRT_BASE + 0x400u;
@@ -77,9 +79,9 @@ static bool v832_dma_internal_memory(hwaddr address)
            (address >= 0xfe000000u && address < 0xfe001000u);
 }
 
-static bool v832_dma_valid_addresses(const V832DMAChannel *channel)
+static bool v832_dma_valid_addresses(const V832DMAChannel *channel) // validate if src and dst are valid for transfer between each other.
 {
-    unsigned transfer_block = FIELD_EX16(channel->dchc, DCHC, TBT);
+    unsigned transfer_block = FIELD_EX16(channel->dchc, DCHC, TBT); // get transfer block type determined by DCHC.TBT
     bool source_io = v832_dma_io_address(channel->dsa);
     bool destination_io = v832_dma_io_address(channel->dda);
 
@@ -95,16 +97,16 @@ static bool v832_dma_valid_addresses(const V832DMAChannel *channel)
         return source_io && !destination_io &&
                !v832_dma_internal_memory(channel->dda);
     default:
-        return false;
+        return false; // I/O to I/O is not a thing.
     }
 }
 
 static unsigned v832_dma_width(const V832DMAChannel *channel)
 {
     switch (FIELD_EX16(channel->dchc, DCHC, DS)) {
-    case 0:  return 1;
-    case 1:  return 2;
-    case 2:  return 4;
+    case 0:  return 1; // byte
+    case 1:  return 2; // halfword
+    case 2:  return 4; // word, bob
     default: return 0;
     }
 }
@@ -114,19 +116,19 @@ static void v832_dma_advance(uint32_t *address, unsigned direction,
 {
     switch (direction) {
     case 0:
-        *address += width;
+        *address += width; // march!
         break;
     case 1:
-        *address -= width;
+        *address -= width; // about-face!
         break;
     case 2:
-        break;
+        break; // halt!
     default:
-        g_assert_not_reached();
+        g_assert_not_reached(); // other than honorable
     }
 }
 
-static void v832_dma_set_ack(V832DMAState *s, unsigned index, bool active)
+static void v832_dma_set_ack(V832DMAState *s, unsigned index, bool active) // DMAAK interrupt behavior.
 {
     V832DMAChannel *channel = &s->channel[index];
     bool dal = FIELD_EX16(channel->dchc, DCHC, DAL);
@@ -135,7 +137,7 @@ static void v832_dma_set_ack(V832DMAState *s, unsigned index, bool active)
     qemu_set_irq(s->dmaak[index], active ? (dal ? 1 : 0) : (dal ? 0 : 1));
 }
 
-static void v832_dma_raise_tc(V832DMAState *s)
+static void v832_dma_raise_tc(V832DMAState *s) // GPIO output for TC interrupt behavior (STOPAK not implemented; needs to coordinate with STBY inst)
 {
     if (FIELD_EX16(s->dc, DC, TCSA)) {
         return;
@@ -153,15 +155,15 @@ static void v832_dma_stopak(void *opaque, int n, int level)
     }
 }
 
-static void v832_dma_raise_irq(V832DMAState *s)
+static void v832_dma_raise_irq(V832DMAState *s) // generic qemu irq for GPIO
 {
     qemu_set_irq(s->irq, 1);
     qemu_set_irq(s->irq, 0);
 }
 
-static bool v832_dma_transfer(V832DMAState *s, V832DMAChannel *channel)
+static bool v832_dma_transfer(V832DMAState *s, V832DMAChannel *channel) // put it all together...
 {
-    uint8_t data[4];
+    uint8_t data[4]; // buffer
     unsigned width = v832_dma_width(channel);
     bool single_transfer = !channel->transfer_started && channel->dbc == 0;
     hwaddr source_address;
@@ -193,7 +195,7 @@ static bool v832_dma_transfer(V832DMAState *s, V832DMAChannel *channel)
     v832_dma_advance(&channel->dda,
                      FIELD_EX16(channel->dchc, DCHC, DAD), width);
     channel->transfer_started = true;
-    if (!single_transfer) {
+    if (!single_transfer) { // decrement by width of transfer specified if not a single transfer.
         channel->dbc -= width;
     }
 
@@ -222,9 +224,9 @@ static bool v832_dma_channel_requested(const V832DMAState *s,
     }
 
     switch (transfer_type) {
-    case V832_DMA_REQUEST_EXTERNAL:
+    case V832_DMA_REQUEST_EXTERNAL: // GPIO
         return channel->external_request;
-    case V832_DMA_REQUEST_SOFTWARE:
+    case V832_DMA_REQUEST_SOFTWARE: // vs internal ()
         return channel->software_request;
     default:
         return transfer_type < ARRAY_SIZE(s->pending_internal) &&
@@ -232,7 +234,7 @@ static bool v832_dma_channel_requested(const V832DMAState *s,
     }
 }
 
-static bool v832_dma_arbitrate(V832DMAState *s)
+static bool v832_dma_arbitrate(V832DMAState *s) // wrapper for arbitration of DMA channels; checks if any channel is requesting a transfer and services it.
 {
     bool transferred = false;
 
@@ -242,7 +244,7 @@ static bool v832_dma_arbitrate(V832DMAState *s)
 
     s->arbitrating = true;
 
-    for (;;) {
+    for (;;) { // looks like room for improvement...
         unsigned index;
         V832DMAChannel *channel;
         unsigned transfer_type;
@@ -264,7 +266,7 @@ static bool v832_dma_arbitrate(V832DMAState *s)
         transfer_type = FIELD_EX16(channel->dchc, DCHC, TTYP);
         v832_dma_set_ack(s, index, true);
 
-        if (!v832_dma_transfer(s, channel)) {
+        if (!v832_dma_transfer(s, channel)) { // hmmm...
             channel->dchc = FIELD_DP16(channel->dchc, DCHC, EN, 0);
         } else {
             transferred = true;
@@ -286,14 +288,14 @@ static bool v832_dma_arbitrate(V832DMAState *s)
     return transferred;
 }
 
-static void v832_dma_request_tick(void *opaque)
+static void v832_dma_request_tick(void *opaque) // wrapper of wrapper...?
 {
     V832DMAState *s = opaque;
 
     v832_dma_arbitrate(s);
 }
 
-void v832_dma_set_internal_request(V832DMAState *s, enum V832DMARequest request)
+void v832_dma_set_internal_request(V832DMAState *s, enum V832DMARequest request) // set a pending internal request for a given channel to be serviced on next arb.
 {
     if (request >= ARRAY_SIZE(s->pending_internal)) {
         return;
@@ -303,19 +305,19 @@ void v832_dma_set_internal_request(V832DMAState *s, enum V832DMARequest request)
               qemu_clock_get_ns(QEMU_CLOCK_VIRTUAL) + 1);
 }
 
-void v832_dma_nmi(V832DMAState *s)
+void v832_dma_nmi(V832DMAState *s) // NMI trigger
 {
     if (!FIELD_EX16(s->dc, DC, MEN)) {
         return;
     }
 
     s->dc = FIELD_DP16(s->dc, DC, MEN, 0);
-    for (unsigned index = 0; index < V832_DMA_CHANNELS; index++) {
+    for (unsigned index = 0; index < V832_DMA_CHANNELS; index++) { // disable all channels and deassert DMAAK
         v832_dma_set_ack(s, index, false);
     }
 }
 
-static void v832_dma_nmi_input(void *opaque, int n, int level)
+static void v832_dma_nmi_input(void *opaque, int n, int level) // NMI input GPIO handler
 {
     V832DMAState *s = opaque;
 
@@ -325,7 +327,7 @@ static void v832_dma_nmi_input(void *opaque, int n, int level)
     s->nmi_level = level;
 }
 
-static void v832_dma_request(void *opaque, int n, int level)
+static void v832_dma_request(void *opaque, int n, int level) // external request GPIO handler
 {
     V832DMAState *s = opaque;
 
@@ -342,7 +344,7 @@ static void v832_dma_request(void *opaque, int n, int level)
     }
 }
 
-static uint64_t v832_dma_read(void *opaque, hwaddr offset, unsigned size)
+static uint64_t v832_dma_read(void *opaque, hwaddr offset, unsigned size) // read from DMA registers
 {
     V832DMAState *s = opaque;
     unsigned index = offset / 0x10;
@@ -371,7 +373,7 @@ static uint64_t v832_dma_read(void *opaque, hwaddr offset, unsigned size)
     }
 }
 
-static void v832_dma_write(void *opaque, hwaddr offset, uint64_t value, unsigned size)
+static void v832_dma_write(void *opaque, hwaddr offset, uint64_t value, unsigned size) // write to...
 {
     V832DMAState *s = opaque;
     unsigned index = offset / 0x10;
@@ -418,7 +420,7 @@ static const MemoryRegionOps v832_dma_ops = {
     .valid.max_access_size = 2,
 };
 
-static void v832_dma_reset_hold(Object *obj, ResetType type)
+static void v832_dma_reset_hold(Object *obj, ResetType type) // reset state of DMA controller
 {
     V832DMAState *s = V832_DMA(obj);
 
@@ -435,7 +437,7 @@ static void v832_dma_reset_hold(Object *obj, ResetType type)
     qemu_set_irq(s->tc_stopak, 0);
 }
 
-static void v832_dma_realize(DeviceState *dev, Error **errp)
+static void v832_dma_realize(DeviceState *dev, Error **errp) // init dma, gpio, irq, qemu request timer
 {
     V832DMAState *s = V832_DMA(dev);
 

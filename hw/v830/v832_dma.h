@@ -10,9 +10,9 @@
 OBJECT_DECLARE_SIMPLE_TYPE(V832DMAState, V832_DMA)
 
 #define V832_DMA_CHANNELS 4
-#define V832_DMA_MMIO_SIZE 0x40
+#define V832_DMA_MMIO_SIZE 0x40 // 4 channels, 0x10 bytes each
 
-enum V832DMARequest {
+enum V832DMARequest { // list of internal requests that can be serviced by the DMA controller
     V832_DMA_REQUEST_EXTERNAL = 0,
     V832_DMA_REQUEST_SOFTWARE = 1,
     V832_DMA_REQUEST_UART_TX = 4,
